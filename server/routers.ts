@@ -283,7 +283,7 @@ export const appRouter = router({
   scout: router({
     run: protectedProcedure
       .input(z.object({
-        sources: z.array(z.string()).optional().default(["demo"]),
+        sources: z.array(z.string()).optional().default(["google"]),
         maxResults: z.number().optional().default(50),
       }))
       .mutation(async ({ ctx, input }) => {

@@ -14,10 +14,9 @@ import { toast } from "sonner";
 import { Link } from "wouter";
 
 const AVAILABLE_SOURCES = [
-  { id: "google_jobs", name: "Google Jobs", description: "Google-haku työpaikoista Serper API:lla" },
+  { id: "google", name: "Google Jobs", description: "Google-haku työpaikoista Serper API:lla" },
   { id: "linkedin", name: "LinkedIn (tulossa)", description: "LinkedIn työpaikat - tulossa pian", disabled: true },
   { id: "indeed", name: "Indeed (tulossa)", description: "Indeed työpaikat - tulossa pian", disabled: true },
-  { id: "demo", name: "Demo-data", description: "Testidataa kehitystä varten" },
 ];
 
 export default function Scout() {
@@ -37,7 +36,7 @@ export default function Scout() {
   const runAutoScoutNowMutation = trpc.autoScout.runNow.useMutation();
   
   const [isRunning, setIsRunning] = useState(false);
-  const [selectedSources, setSelectedSources] = useState<string[]>(["google_jobs"]);
+  const [selectedSources, setSelectedSources] = useState<string[]>(["google"]);
   
   // Auto Scout state
   const [autoScoutEnabled, setAutoScoutEnabled] = useState(false);
