@@ -181,6 +181,27 @@ export async function runMigrations() {
       // Column may already exist
     }
 
+    // Add match score columns to matches table
+    const matchColumns = [
+      { name: 'totalScore', type: 'INT DEFAULT 0' },
+      { name: 'skillScore', type: 'INT DEFAULT 0' },
+      { name: 'experienceScore', type: 'INT DEFAULT 0' },
+      { name: 'locationScore', type: 'INT DEFAULT 0' },
+      { name: 'salaryScore', type: 'INT DEFAULT 0' },
+      { name: 'industryScore', type: 'INT DEFAULT 0' },
+      { name: 'companyScore', type: 'INT DEFAULT 0' },
+      { name: 'matchCategory', type: 'VARCHAR(50) DEFAULT "weak"' },
+    ];
+
+    for (const col of matchColumns) {
+      try {
+        await db.execute(sql.raw(`ALTER TABLE matches ADD COLUMN ${col.name} ${col.type}`));
+        console.log(`[Migrate] ✓ matches.${col.name} added`);
+      } catch (e: any) {
+        // Column may already exist
+      }
+    }
+
     console.log("[Migrate] Migrations complete!");
   } catch (error) {
     console.error("[Migrate] Migration error:", error);
