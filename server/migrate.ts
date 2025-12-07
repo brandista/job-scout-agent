@@ -161,6 +161,26 @@ export async function runMigrations() {
       // Column may already exist
     }
 
+    // Add linkedinUrl to companies if not exists
+    try {
+      await db.execute(sql`
+        ALTER TABLE companies ADD COLUMN linkedinUrl VARCHAR(500)
+      `);
+      console.log("[Migrate] ✓ companies.linkedinUrl added");
+    } catch (e: any) {
+      // Column may already exist
+    }
+
+    // Add lastSeenAt to companies if not exists
+    try {
+      await db.execute(sql`
+        ALTER TABLE companies ADD COLUMN lastSeenAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      `);
+      console.log("[Migrate] ✓ companies.lastSeenAt added");
+    } catch (e: any) {
+      // Column may already exist
+    }
+
     console.log("[Migrate] Migrations complete!");
   } catch (error) {
     console.error("[Migrate] Migration error:", error);
