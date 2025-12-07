@@ -38,47 +38,22 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   }
 
   try {
-    const values: InsertUser = {
-      openId: user.openId,
-    };
-    const updateSet: Record<string, unknown> = {};
+    const name = user.name ?? null;
+    const email = user.email ?? null;
+    const loginMethod = user.loginMethod ?? null;
+    const lastSignedIn = user.lastSignedIn ?? new Date();
+    const role = user.role ?? (user.openId === ENV.ownerOpenId ? 'admin' : 'user');
 
-    const textFields = ["name", "email", "loginMethod"] as const;
-    type TextField = (typeof textFields)[number];
-
-    const assignNullable = (field: TextField) => {
-      const value = user[field];
-      if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
-      updateSet[field] = normalized;
-    };
-
-    textFields.forEach(assignNullable);
-
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
-    if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
-    }
-
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
-
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
+    await db.execute(sql`
+      INSERT INTO users (openId, name, email, loginMethod, lastSignedIn, role)
+      VALUES (${user.openId}, ${name}, ${email}, ${loginMethod}, ${lastSignedIn}, ${role})
+      ON DUPLICATE KEY UPDATE
+        name = COALESCE(${name}, name),
+        email = COALESCE(${email}, email),
+        loginMethod = COALESCE(${loginMethod}, loginMethod),
+        lastSignedIn = ${lastSignedIn},
+        role = COALESCE(${role}, role)
+    `);
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;
@@ -88,15 +63,17 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  const result = await db.execute(sql`SELECT * FROM users WHERE openId = ${openId} LIMIT 1`);
+  const rows = (result[0] as any[]) || [];
+  return rows.length > 0 ? rows[0] : undefined;
 }
 
 export async function getUserById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  const result = await db.execute(sql`SELECT * FROM users WHERE id = ${id} LIMIT 1`);
+  const rows = (result[0] as any[]) || [];
+  return rows.length > 0 ? rows[0] : undefined;
 }
 
 // ============== PROFILE QUERIES ==============
@@ -104,8 +81,9 @@ export async function getUserById(id: number) {
 export async function getProfileByUserId(userId: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  const result = await db.execute(sql`SELECT * FROM profiles WHERE userId = ${userId} LIMIT 1`);
+  const rows = (result[0] as any[]) || [];
+  return rows.length > 0 ? rows[0] : undefined;
 }
 
 export async function upsertProfile(profile: InsertProfile) {
@@ -114,9 +92,28 @@ export async function upsertProfile(profile: InsertProfile) {
   
   const existing = await getProfileByUserId(profile.userId);
   if (existing) {
-    await db.update(profiles).set(profile).where(eq(profiles.userId, profile.userId));
+    await db.execute(sql`
+      UPDATE profiles SET 
+        currentTitle = ${profile.currentTitle || null},
+        currentCompany = ${profile.currentCompany || null},
+        yearsExperience = ${profile.yearsExperience || null},
+        skills = ${profile.skills || null},
+        preferredLocations = ${profile.preferredLocations || null},
+        preferredJobTitles = ${profile.preferredJobTitles || null},
+        preferredIndustries = ${profile.preferredIndustries || null},
+        salaryMin = ${profile.salaryMin || null},
+        salaryMax = ${profile.salaryMax || null},
+        remotePreference = ${profile.remotePreference || null},
+        employmentTypes = ${profile.employmentTypes || null},
+        targetFunctions = ${profile.targetFunctions || null},
+        updatedAt = NOW()
+      WHERE userId = ${profile.userId}
+    `);
   } else {
-    await db.insert(profiles).values(profile);
+    await db.execute(sql`
+      INSERT INTO profiles (userId, currentTitle, currentCompany, yearsExperience, skills, preferredLocations, preferredJobTitles, preferredIndustries, salaryMin, salaryMax, remotePreference, employmentTypes, targetFunctions)
+      VALUES (${profile.userId}, ${profile.currentTitle || null}, ${profile.currentCompany || null}, ${profile.yearsExperience || null}, ${profile.skills || null}, ${profile.preferredLocations || null}, ${profile.preferredJobTitles || null}, ${profile.preferredIndustries || null}, ${profile.salaryMin || null}, ${profile.salaryMax || null}, ${profile.remotePreference || null}, ${profile.employmentTypes || null}, ${profile.targetFunctions || null})
+    `);
   }
 }
 
@@ -428,15 +425,14 @@ export async function unsaveJob(userId: number, jobId: number) {
 export async function getSavedJobsByUserId(userId: number) {
   const db = await getDb();
   if (!db) return [];
-  return await db
-    .select({
-      savedJob: savedJobs,
-      job: jobs,
-    })
-    .from(savedJobs)
-    .innerJoin(jobs, eq(savedJobs.jobId, jobs.id))
-    .where(eq(savedJobs.userId, userId))
-    .orderBy(desc(savedJobs.savedAt));
+  const result = await db.execute(sql`
+    SELECT sj.*, j.*
+    FROM savedJobs sj
+    INNER JOIN jobs j ON sj.jobId = j.id
+    WHERE sj.userId = ${userId}
+    ORDER BY sj.savedAt DESC
+  `);
+  return (result[0] as any[]) || [];
 }
 
 // ============== SCOUT HISTORY QUERIES ==============
@@ -444,18 +440,19 @@ export async function getSavedJobsByUserId(userId: number) {
 export async function createScoutHistory(history: InsertScoutHistory) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.insert(scoutHistory).values(history);
+  await db.execute(sql`
+    INSERT INTO scoutHistory (userId, searchParams, resultsCount, newMatchesCount, sources, status)
+    VALUES (${history.userId}, ${history.searchParams || null}, ${history.resultsCount || 0}, ${history.newMatchesCount || 0}, ${history.sources || null}, ${history.status || 'success'})
+  `);
 }
 
 export async function getScoutHistoryByUserId(userId: number, limit: number = 20) {
   const db = await getDb();
   if (!db) return [];
-  return await db
-    .select()
-    .from(scoutHistory)
-    .where(eq(scoutHistory.userId, userId))
-    .orderBy(desc(scoutHistory.executedAt))
-    .limit(limit);
+  const result = await db.execute(sql`
+    SELECT * FROM scoutHistory WHERE userId = ${userId} ORDER BY executedAt DESC LIMIT ${limit}
+  `);
+  return (result[0] as any[]) || [];
 }
 
 // ============== CONVERSATION QUERIES ==============
@@ -463,39 +460,42 @@ export async function getScoutHistoryByUserId(userId: number, limit: number = 20
 export async function createConversation(data: InsertConversation) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(conversations).values(data);
-  return { insertId: result[0].insertId };
+  await db.execute(sql`
+    INSERT INTO conversations (userId, agentType, title)
+    VALUES (${data.userId}, ${data.agentType}, ${data.title || null})
+  `);
+  const result = await db.execute(sql`SELECT LAST_INSERT_ID() as insertId`);
+  return { insertId: ((result[0] as any[])[0])?.insertId };
 }
 
 export async function getConversation(id: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(conversations).where(eq(conversations.id, id)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  const result = await db.execute(sql`SELECT * FROM conversations WHERE id = ${id} LIMIT 1`);
+  const rows = (result[0] as any[]) || [];
+  return rows.length > 0 ? rows[0] : undefined;
 }
 
 export async function getConversationsByUserId(userId: number, limit: number = 20) {
   const db = await getDb();
   if (!db) return [];
-  return await db
-    .select()
-    .from(conversations)
-    .where(eq(conversations.userId, userId))
-    .orderBy(desc(conversations.updatedAt))
-    .limit(limit);
+  const result = await db.execute(sql`
+    SELECT * FROM conversations WHERE userId = ${userId} ORDER BY updatedAt DESC LIMIT ${limit}
+  `);
+  return (result[0] as any[]) || [];
 }
 
 export async function updateConversationTitle(id: number, title: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(conversations).set({ title }).where(eq(conversations.id, id));
+  await db.execute(sql`UPDATE conversations SET title = ${title} WHERE id = ${id}`);
 }
 
 export async function deleteConversation(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.delete(messages).where(eq(messages.conversationId, id));
-  await db.delete(conversations).where(eq(conversations.id, id));
+  await db.execute(sql`DELETE FROM messages WHERE conversationId = ${id}`);
+  await db.execute(sql`DELETE FROM conversations WHERE id = ${id}`);
 }
 
 // ============== MESSAGE QUERIES ==============
@@ -503,24 +503,24 @@ export async function deleteConversation(id: number) {
 export async function createMessage(data: InsertMessage) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(messages).values(data);
+  await db.execute(sql`
+    INSERT INTO messages (conversationId, role, content, toolCalls, toolResults)
+    VALUES (${data.conversationId}, ${data.role}, ${data.content}, ${data.toolCalls || null}, ${data.toolResults || null})
+  `);
   
-  await db.update(conversations)
-    .set({ updatedAt: new Date() })
-    .where(eq(conversations.id, data.conversationId));
+  await db.execute(sql`UPDATE conversations SET updatedAt = NOW() WHERE id = ${data.conversationId}`);
   
-  return { insertId: result[0].insertId };
+  const result = await db.execute(sql`SELECT LAST_INSERT_ID() as insertId`);
+  return { insertId: ((result[0] as any[])[0])?.insertId };
 }
 
 export async function getMessagesByConversationId(conversationId: number, limit: number = 100) {
   const db = await getDb();
   if (!db) return [];
-  return await db
-    .select()
-    .from(messages)
-    .where(eq(messages.conversationId, conversationId))
-    .orderBy(messages.createdAt)
-    .limit(limit);
+  const result = await db.execute(sql`
+    SELECT * FROM messages WHERE conversationId = ${conversationId} ORDER BY createdAt ASC LIMIT ${limit}
+  `);
+  return (result[0] as any[]) || [];
 }
 
 // ============== STATS ==============
@@ -529,14 +529,14 @@ export async function getStats() {
   const db = await getDb();
   if (!db) return { companies: 0, events: 0, jobs: 0 };
 
-  const companyCount = await db.select({ count: sql<number>`count(*)` }).from(companies);
-  const eventCount = await db.select({ count: sql<number>`count(*)` }).from(events);
-  const jobCount = await db.select({ count: sql<number>`count(*)` }).from(jobs);
+  const companyResult = await db.execute(sql`SELECT COUNT(*) as count FROM companies`);
+  const eventResult = await db.execute(sql`SELECT COUNT(*) as count FROM events`);
+  const jobResult = await db.execute(sql`SELECT COUNT(*) as count FROM jobs`);
 
   return {
-    companies: companyCount[0]?.count || 0,
-    events: eventCount[0]?.count || 0,
-    jobs: jobCount[0]?.count || 0,
+    companies: ((companyResult[0] as any[])[0])?.count || 0,
+    events: ((eventResult[0] as any[])[0])?.count || 0,
+    jobs: ((jobResult[0] as any[])[0])?.count || 0,
   };
 }
 
@@ -546,12 +546,11 @@ export async function getAutoScoutSettings(userId: number) {
   const db = await getDb();
   if (!db) return null;
 
-  const result = await db.select()
-    .from(autoScoutSettings)
-    .where(eq(autoScoutSettings.userId, userId))
-    .limit(1);
-
-  return result[0] || null;
+  const result = await db.execute(sql`
+    SELECT * FROM autoScoutSettings WHERE userId = ${userId} LIMIT 1
+  `);
+  const rows = (result[0] as any[]) || [];
+  return rows[0] || null;
 }
 
 export async function upsertAutoScoutSettings(userId: number, settings: {
@@ -566,35 +565,31 @@ export async function upsertAutoScoutSettings(userId: number, settings: {
 
   const existing = await getAutoScoutSettings(userId);
 
-  const data = {
-    enabled: settings.enabled !== undefined ? (settings.enabled ? 1 : 0) : undefined,
-    frequency: settings.frequency,
-    emailEnabled: settings.emailEnabled !== undefined ? (settings.emailEnabled ? 1 : 0) : undefined,
-    emailAddress: settings.emailAddress,
-    sources: settings.sources ? JSON.stringify(settings.sources) : undefined,
-    nextRunAt: settings.enabled ? calculateNextRunAt(settings.frequency || "weekly") : null,
-  };
-
-  // Remove undefined values
-  const cleanData = Object.fromEntries(
-    Object.entries(data).filter(([_, v]) => v !== undefined)
-  );
+  const enabled = settings.enabled !== undefined ? (settings.enabled ? 1 : 0) : (existing?.enabled ?? 0);
+  const frequency = settings.frequency || existing?.frequency || "weekly";
+  const emailEnabled = settings.emailEnabled !== undefined ? (settings.emailEnabled ? 1 : 0) : (existing?.emailEnabled ?? 1);
+  const emailAddress = settings.emailAddress || existing?.emailAddress || null;
+  const sources = settings.sources ? JSON.stringify(settings.sources) : (existing?.sources || JSON.stringify(["google_jobs"]));
+  const nextRunAt = enabled ? calculateNextRunAt(frequency) : null;
 
   if (existing) {
-    await db.update(autoScoutSettings)
-      .set({ ...cleanData, updatedAt: new Date() })
-      .where(eq(autoScoutSettings.id, existing.id));
-    return { ...existing, ...cleanData };
+    await db.execute(sql`
+      UPDATE autoScoutSettings SET 
+        enabled = ${enabled},
+        frequency = ${frequency},
+        emailEnabled = ${emailEnabled},
+        emailAddress = ${emailAddress},
+        sources = ${sources},
+        nextRunAt = ${nextRunAt},
+        updatedAt = NOW()
+      WHERE id = ${existing.id}
+    `);
+    return await getAutoScoutSettings(userId);
   } else {
-    await db.insert(autoScoutSettings).values({
-      userId,
-      enabled: data.enabled ?? 0,
-      frequency: data.frequency ?? "weekly",
-      emailEnabled: data.emailEnabled ?? 1,
-      emailAddress: data.emailAddress,
-      sources: data.sources ?? JSON.stringify(["google_jobs"]),
-      nextRunAt: data.nextRunAt,
-    });
+    await db.execute(sql`
+      INSERT INTO autoScoutSettings (userId, enabled, frequency, emailEnabled, emailAddress, sources, nextRunAt)
+      VALUES (${userId}, ${enabled}, ${frequency}, ${emailEnabled}, ${emailAddress}, ${sources}, ${nextRunAt})
+    `);
     return await getAutoScoutSettings(userId);
   }
 }
@@ -603,27 +598,20 @@ export async function getAutoScoutSettingsDueForRun() {
   const db = await getDb();
   if (!db) return [];
 
-  const now = new Date();
-  return await db.select()
-    .from(autoScoutSettings)
-    .where(
-      and(
-        eq(autoScoutSettings.enabled, 1),
-        sql`${autoScoutSettings.nextRunAt} <= ${now}`
-      )
-    );
+  const result = await db.execute(sql`
+    SELECT * FROM autoScoutSettings WHERE enabled = 1 AND nextRunAt <= NOW()
+  `);
+  return (result[0] as any[]) || [];
 }
 
 export async function updateAutoScoutLastRun(settingsId: number, frequency: "daily" | "weekly" | "biweekly") {
   const db = await getDb();
   if (!db) return;
 
-  await db.update(autoScoutSettings)
-    .set({
-      lastRunAt: new Date(),
-      nextRunAt: calculateNextRunAt(frequency),
-    })
-    .where(eq(autoScoutSettings.id, settingsId));
+  const nextRunAt = calculateNextRunAt(frequency);
+  await db.execute(sql`
+    UPDATE autoScoutSettings SET lastRunAt = NOW(), nextRunAt = ${nextRunAt} WHERE id = ${settingsId}
+  `);
 }
 
 function calculateNextRunAt(frequency: "daily" | "weekly" | "biweekly"): Date {
