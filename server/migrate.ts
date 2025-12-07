@@ -114,6 +114,12 @@ export async function runMigrations() {
     console.log("[Migrate] ✓ jobs table created");
 
     // ============== MATCHES TABLE ==============
+    // Drop and recreate to ensure correct schema
+    try {
+      await db.execute(sql`DROP TABLE IF EXISTS matches`);
+      console.log("[Migrate] ✓ matches table dropped (will recreate)");
+    } catch (e: any) { }
+    
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS matches (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -270,30 +276,69 @@ export async function runMigrations() {
       // May fail if already correct
     }
 
-    // Add missing columns to existing tables
-    const alterCommands = [
-      { table: 'jobs', column: 'companyId', type: 'INT' },
-      { table: 'jobs', column: 'seniorityLevel', type: 'VARCHAR(50)' },
-      { table: 'jobs', column: 'functionType', type: 'VARCHAR(100)' },
-      { table: 'profiles', column: 'targetFunctions', type: 'TEXT' },
-      { table: 'matches', column: 'totalScore', type: 'INT DEFAULT 0' },
-      { table: 'matches', column: 'skillScore', type: 'INT DEFAULT 0' },
-      { table: 'matches', column: 'experienceScore', type: 'INT DEFAULT 0' },
-      { table: 'matches', column: 'locationScore', type: 'INT DEFAULT 0' },
-      { table: 'matches', column: 'salaryScore', type: 'INT DEFAULT 0' },
-      { table: 'matches', column: 'industryScore', type: 'INT DEFAULT 0' },
-      { table: 'matches', column: 'companyScore', type: 'INT DEFAULT 0' },
-      { table: 'matches', column: 'matchCategory', type: "VARCHAR(50) DEFAULT 'weak'" },
-    ];
+    // Add missing columns to matches table
+    console.log("[Migrate] Adding columns to matches table...");
+    
+    try {
+      await db.execute(sql`ALTER TABLE matches ADD COLUMN totalScore INT DEFAULT 0`);
+      console.log("[Migrate] ✓ matches.totalScore added");
+    } catch (e: any) { console.log("[Migrate] matches.totalScore exists"); }
 
-    for (const cmd of alterCommands) {
-      try {
-        await db.execute(sql.raw(`ALTER TABLE ${cmd.table} ADD COLUMN ${cmd.column} ${cmd.type}`));
-        console.log(`[Migrate] ✓ ${cmd.table}.${cmd.column} added`);
-      } catch (e: any) {
-        // Column may already exist
-      }
-    }
+    try {
+      await db.execute(sql`ALTER TABLE matches ADD COLUMN skillScore INT DEFAULT 0`);
+      console.log("[Migrate] ✓ matches.skillScore added");
+    } catch (e: any) { console.log("[Migrate] matches.skillScore exists"); }
+
+    try {
+      await db.execute(sql`ALTER TABLE matches ADD COLUMN experienceScore INT DEFAULT 0`);
+      console.log("[Migrate] ✓ matches.experienceScore added");
+    } catch (e: any) { console.log("[Migrate] matches.experienceScore exists"); }
+
+    try {
+      await db.execute(sql`ALTER TABLE matches ADD COLUMN locationScore INT DEFAULT 0`);
+      console.log("[Migrate] ✓ matches.locationScore added");
+    } catch (e: any) { console.log("[Migrate] matches.locationScore exists"); }
+
+    try {
+      await db.execute(sql`ALTER TABLE matches ADD COLUMN salaryScore INT DEFAULT 0`);
+      console.log("[Migrate] ✓ matches.salaryScore added");
+    } catch (e: any) { console.log("[Migrate] matches.salaryScore exists"); }
+
+    try {
+      await db.execute(sql`ALTER TABLE matches ADD COLUMN industryScore INT DEFAULT 0`);
+      console.log("[Migrate] ✓ matches.industryScore added");
+    } catch (e: any) { console.log("[Migrate] matches.industryScore exists"); }
+
+    try {
+      await db.execute(sql`ALTER TABLE matches ADD COLUMN companyScore INT DEFAULT 0`);
+      console.log("[Migrate] ✓ matches.companyScore added");
+    } catch (e: any) { console.log("[Migrate] matches.companyScore exists"); }
+
+    try {
+      await db.execute(sql`ALTER TABLE matches ADD COLUMN matchCategory VARCHAR(50) DEFAULT 'weak'`);
+      console.log("[Migrate] ✓ matches.matchCategory added");
+    } catch (e: any) { console.log("[Migrate] matches.matchCategory exists"); }
+
+    // Add missing columns to other tables
+    try {
+      await db.execute(sql`ALTER TABLE jobs ADD COLUMN companyId INT`);
+      console.log("[Migrate] ✓ jobs.companyId added");
+    } catch (e: any) { }
+
+    try {
+      await db.execute(sql`ALTER TABLE jobs ADD COLUMN seniorityLevel VARCHAR(50)`);
+      console.log("[Migrate] ✓ jobs.seniorityLevel added");
+    } catch (e: any) { }
+
+    try {
+      await db.execute(sql`ALTER TABLE jobs ADD COLUMN functionType VARCHAR(100)`);
+      console.log("[Migrate] ✓ jobs.functionType added");
+    } catch (e: any) { }
+
+    try {
+      await db.execute(sql`ALTER TABLE profiles ADD COLUMN targetFunctions TEXT`);
+      console.log("[Migrate] ✓ profiles.targetFunctions added");
+    } catch (e: any) { }
 
     console.log("[Migrate] ✓ All migrations complete!");
   } catch (error) {
