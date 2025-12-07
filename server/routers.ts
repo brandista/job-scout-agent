@@ -181,7 +181,34 @@ export const appRouter = router({
       }))
       .query(async ({ ctx, input }) => {
         const { getMatchesByUserId } = await import("./db");
-        return await getMatchesByUserId(ctx.user.id, input.limit);
+        const results = await getMatchesByUserId(ctx.user.id, input.limit);
+        
+        // Transform flat SQL results to { match, job } format expected by frontend
+        return results.map((row: any) => ({
+          match: {
+            id: row.id,
+            userId: row.userId,
+            jobId: row.jobId,
+            score: row.score,
+            totalScore: row.totalScore,
+            reasons: row.reasons,
+            status: row.status,
+            createdAt: row.createdAt,
+          },
+          job: {
+            id: row.jobId,
+            title: row.title,
+            company: row.company,
+            location: row.location,
+            description: row.description,
+            salaryMin: row.salaryMin,
+            salaryMax: row.salaryMax,
+            employmentType: row.employmentType,
+            remoteType: row.remoteType,
+            url: row.url,
+            postedAt: row.postedAt,
+          },
+        }));
       }),
   }),
 
@@ -189,7 +216,31 @@ export const appRouter = router({
   savedJobs: router({
     list: protectedProcedure.query(async ({ ctx }) => {
       const { getSavedJobsByUserId } = await import("./db");
-      return await getSavedJobsByUserId(ctx.user.id);
+      const results = await getSavedJobsByUserId(ctx.user.id);
+      
+      // Transform flat SQL results to { savedJob, job } format expected by frontend
+      return results.map((row: any) => ({
+        savedJob: {
+          id: row.id,
+          userId: row.userId,
+          jobId: row.jobId,
+          notes: row.notes,
+          savedAt: row.savedAt,
+        },
+        job: {
+          id: row.jobId,
+          title: row.title,
+          company: row.company,
+          location: row.location,
+          description: row.description,
+          salaryMin: row.salaryMin,
+          salaryMax: row.salaryMax,
+          employmentType: row.employmentType,
+          remoteType: row.remoteType,
+          url: row.url,
+          postedAt: row.postedAt,
+        },
+      }));
     }),
     save: protectedProcedure
       .input(z.object({
