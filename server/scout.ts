@@ -3,11 +3,10 @@ import type { Profile, InsertJob } from "../drizzle/schema";
 /**
  * Scoutaus-agentti työpaikkojen hakuun
  * 
- * Käyttää Serper.dev Google Jobs API:a joka hakee oikeita työpaikkoja
- * Google for Jobs -aggregaattorilta. Toimii maailmanlaajuisesti, myös Suomessa.
+ * Käyttää Adzuna API:a joka hakee oikeita työpaikkailmoituksia.
+ * Tukee Suomea (fi) ja monia muita maita.
  * 
- * Ilmainen tier: 2500 hakua/kk
- * https://serper.dev
+ * https://developer.adzuna.com/
  */
 
 export interface ScoutParams {
@@ -26,49 +25,50 @@ export interface ScoutResult {
  * Pääfunktio työpaikkojen scoutaukseen
  */
 export async function scoutJobs(params: ScoutParams): Promise<ScoutResult[]> {
-  const { profile, sources = ["google"], maxResults = 50 } = params;
+  const { profile, sources = ["adzuna"], maxResults = 50 } = params;
   const results: ScoutResult[] = [];
 
-  // Serper.dev Google Jobs API (ensisijainen)
+  // Adzuna API (ensisijainen)
   // Hyväksytään myös vanhat source-nimet yhteensopivuuden vuoksi
-  if (sources.includes("google") || sources.includes("serper") || 
+  if (sources.includes("adzuna") || sources.includes("google") || sources.includes("serper") || 
       sources.includes("tyomarkkinatori") || sources.includes("duunitori") ||
       sources.includes("demo")) {
     try {
-      const jobs = await scoutGoogleJobs(profile, maxResults);
+      const jobs = await scoutAdzunaJobs(profile, maxResults);
       if (jobs.length > 0) {
         results.push({
           jobs,
-          source: "google",
+          source: "adzuna",
           count: jobs.length,
         });
-        console.log(`[Scout] Google Jobs found ${jobs.length} jobs`);
+        console.log(`[Scout] Adzuna found ${jobs.length} jobs`);
       }
     } catch (error) {
-      console.error("[Scout] Google Jobs error:", error);
+      console.error("[Scout] Adzuna error:", error);
     }
   }
 
   if (results.length === 0) {
-    console.warn("[Scout] No jobs found - check SERPER_API_KEY environment variable");
+    console.warn("[Scout] No jobs found - check ADZUNA_APP_ID and ADZUNA_APP_KEY environment variables");
   }
 
   return results;
 }
 
 /**
- * Serper.dev Google Jobs API
- * https://serper.dev/google-jobs-api
+ * Adzuna Jobs API
+ * https://developer.adzuna.com/
  * 
- * Ilmainen tier: 2500 hakua/kk
- * Tarvitsee SERPER_API_KEY ympäristömuuttujan
+ * Tarvitsee ADZUNA_APP_ID ja ADZUNA_APP_KEY ympäristömuuttujat
  */
-async function scoutGoogleJobs(profile: Profile, maxResults: number): Promise<InsertJob[]> {
+async function scoutAdzunaJobs(profile: Profile, maxResults: number): Promise<InsertJob[]> {
   const jobs: InsertJob[] = [];
   
-  const apiKey = process.env.SERPER_API_KEY;
-  if (!apiKey) {
-    console.warn("[Scout] SERPER_API_KEY not set");
+  const appId = process.env.ADZUNA_APP_ID;
+  const appKey = process.env.ADZUNA_APP_KEY;
+  
+  if (!appId || !appKey) {
+    console.warn("[Scout] ADZUNA_APP_ID or ADZUNA_APP_KEY not set");
     return jobs;
   }
 
@@ -85,66 +85,112 @@ async function scoutGoogleJobs(profile: Profile, maxResults: number): Promise<In
 
   const searchTerm = preferredTitles[0] || profile.currentTitle || "software developer";
   const location = preferredLocations[0] || "Helsinki";
-  const query = `${searchTerm} ${location}`;
 
-  console.log(`[Scout] Searching Google Jobs for: "${query}"`);
+  console.log(`[Scout] Searching Adzuna for: "${searchTerm}" in "${location}"`);
 
-  try {
-    // Käytetään search-endpointia jobs-spesifisellä haulla
-    const response = await fetch("https://google.serper.dev/search", {
-      method: "POST",
-      headers: {
-        "X-API-KEY": apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        q: `${query} työpaikka OR avoin paikka OR rekrytointi`,
-        gl: "fi",
-        hl: "fi",
-        num: Math.min(maxResults, 20),
-      }),
-    });
+  // Adzuna tukee näitä maita: gb, us, au, br, ca, de, fr, in, nl, nz, pl, ru, sg, za
+  // Suomi (fi) EI ole suoraan tuettu, joten käytetään 'de' (Saksa) tai haetaan ilman maakoodia
+  // TAI käytetään UK/GB ja haetaan "Finland" location-parametrilla
+  
+  // Kokeillaan ensin Suomi-spesifistä hakua DE-endpointilla (lähin)
+  const countries = ['de', 'gb']; // Kokeillaan Saksaa ja UK:ta
+  
+  for (const country of countries) {
+    try {
+      const resultsPerPage = Math.min(maxResults, 50);
+      const url = `https://api.adzuna.com/v1/api/jobs/${country}/search/1?app_id=${appId}&app_key=${appKey}&results_per_page=${resultsPerPage}&what=${encodeURIComponent(searchTerm)}&where=${encodeURIComponent(location)}&content-type=application/json`;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Scout] Serper API error: ${response.status} - ${errorText}`);
-      return jobs;
+      console.log(`[Scout] Trying Adzuna ${country.toUpperCase()}...`);
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[Scout] Adzuna ${country} error: ${response.status} - ${errorText}`);
+        continue;
+      }
+
+      const data = await response.json();
+      const listings = data.results || [];
+
+      console.log(`[Scout] Adzuna ${country.toUpperCase()} returned ${listings.length} jobs`);
+
+      if (listings.length === 0) continue;
+
+      for (const listing of listings.slice(0, maxResults)) {
+        const job: InsertJob = {
+          externalId: listing.id ? `adzuna-${listing.id}` : `adzuna-${Date.now()}-${Math.random()}`,
+          source: "adzuna",
+          title: listing.title || "Työpaikka",
+          company: listing.company?.display_name || "Yritys",
+          description: listing.description || "",
+          location: listing.location?.display_name || location,
+          salaryMin: listing.salary_min ? Math.round(listing.salary_min) : undefined,
+          salaryMax: listing.salary_max ? Math.round(listing.salary_max) : undefined,
+          employmentType: mapContractType(listing.contract_type, listing.contract_time),
+          remoteType: "on-site",
+          industry: listing.category?.label || "",
+          postedAt: listing.created ? new Date(listing.created) : new Date(),
+          url: listing.redirect_url || "",
+        };
+        jobs.push(job);
+      }
+
+      // Jos löydettiin tuloksia, ei tarvitse kokeilla muita maita
+      if (jobs.length > 0) {
+        console.log(`[Scout] Found ${jobs.length} jobs from Adzuna ${country.toUpperCase()}`);
+        break;
+      }
+    } catch (error) {
+      console.error(`[Scout] Adzuna ${country} fetch error:`, error);
     }
+  }
 
-    const data = await response.json();
-    // Search API palauttaa organic results, ei jobs
-    const listings = data.organic || [];
+  // Jos Adzuna ei löytänyt mitään, kokeillaan vielä yleisempää hakua
+  if (jobs.length === 0) {
+    console.log("[Scout] Trying broader Adzuna search...");
+    try {
+      // Hae vain hakutermillä ilman lokaatiota
+      const url = `https://api.adzuna.com/v1/api/jobs/gb/search/1?app_id=${appId}&app_key=${appKey}&results_per_page=20&what=${encodeURIComponent(searchTerm)}&content-type=application/json`;
 
-    console.log(`[Scout] Serper returned ${listings.length} search results`);
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        const listings = data.results || [];
 
-    for (const listing of listings.slice(0, maxResults)) {
-      // Parsitaan työpaikkatiedot hakutuloksista
-      const titleParts = (listing.title || "").split(" - ");
-      const jobTitle = titleParts[0]?.trim() || "Työpaikka";
-      const company = titleParts.length > 1 ? titleParts[titleParts.length - 1]?.trim() : "Yritys";
-      
-      const job: InsertJob = {
-        externalId: listing.link ? `google-${hashString(listing.link)}` : `google-${Date.now()}-${Math.random()}`,
-        source: "google",
-        title: jobTitle,
-        company: company,
-        description: listing.snippet || "",
-        location: location,
-        employmentType: "full-time",
-        remoteType: "on-site",
-        industry: "",
-        postedAt: new Date(),
-        url: listing.link || "",
-      };
-      jobs.push(job);
+        for (const listing of listings.slice(0, maxResults)) {
+          const job: InsertJob = {
+            externalId: listing.id ? `adzuna-${listing.id}` : `adzuna-${Date.now()}-${Math.random()}`,
+            source: "adzuna",
+            title: listing.title || "Työpaikka",
+            company: listing.company?.display_name || "Yritys",
+            description: listing.description || "",
+            location: listing.location?.display_name || "Remote",
+            salaryMin: listing.salary_min ? Math.round(listing.salary_min) : undefined,
+            salaryMax: listing.salary_max ? Math.round(listing.salary_max) : undefined,
+            employmentType: mapContractType(listing.contract_type, listing.contract_time),
+            remoteType: "on-site",
+            industry: listing.category?.label || "",
+            postedAt: listing.created ? new Date(listing.created) : new Date(),
+            url: listing.redirect_url || "",
+          };
+          jobs.push(job);
+        }
+        console.log(`[Scout] Broader search found ${jobs.length} jobs`);
+      }
+    } catch (error) {
+      console.error("[Scout] Broader Adzuna search error:", error);
     }
-
-    console.log(`[Scout] Processed ${jobs.length} jobs for "${query}"`);
-  } catch (error) {
-    console.error("[Scout] Serper fetch error:", error);
   }
 
   return jobs;
+}
+
+function mapContractType(contractType?: string, contractTime?: string): string {
+  if (contractTime === "part_time") return "part-time";
+  if (contractType === "contract") return "contract";
+  if (contractType === "permanent") return "full-time";
+  return "full-time";
 }
 
 function hashString(str: string): string {
@@ -155,39 +201,4 @@ function hashString(str: string): string {
     hash = hash & hash;
   }
   return Math.abs(hash).toString(36);
-}
-
-function mapEmploymentType(type: string | undefined): string {
-  if (!type) return "full-time";
-  const lower = type.toLowerCase();
-  if (lower.includes("part")) return "part-time";
-  if (lower.includes("contract") || lower.includes("temp")) return "contract";
-  if (lower.includes("intern")) return "internship";
-  return "full-time";
-}
-
-function parseDate(dateStr: string | undefined): Date | undefined {
-  if (!dateStr) return undefined;
-  const now = new Date();
-  const lower = dateStr.toLowerCase();
-  
-  if (lower.includes("hour")) {
-    const hours = parseInt(lower) || 1;
-    return new Date(now.getTime() - hours * 60 * 60 * 1000);
-  }
-  if (lower.includes("day")) {
-    const days = parseInt(lower) || 1;
-    return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-  }
-  if (lower.includes("week")) {
-    const weeks = parseInt(lower) || 1;
-    return new Date(now.getTime() - weeks * 7 * 24 * 60 * 60 * 1000);
-  }
-  if (lower.includes("month")) {
-    const months = parseInt(lower) || 1;
-    return new Date(now.getTime() - months * 30 * 24 * 60 * 60 * 1000);
-  }
-  
-  const parsed = new Date(dateStr);
-  return isNaN(parsed.getTime()) ? undefined : parsed;
 }
