@@ -3,9 +3,11 @@ import type { Profile, InsertJob } from "../drizzle/schema";
 /**
  * Scoutaus-agentti työpaikkojen hakuun
  * 
- * Käyttää Adzuna API:a joka hakee oikeita työpaikkailmoituksia.
- * Tukee Suomea (fi) ja monia muita maita.
+ * Käyttää kahta API:a:
+ * 1. SerpApi Google Jobs (ensisijainen) - tukee Suomea!
+ * 2. Adzuna (fallback) - kansainväliset työpaikat
  * 
+ * https://serpapi.com/google-jobs-api
  * https://developer.adzuna.com/
  */
 
@@ -25,14 +27,28 @@ export interface ScoutResult {
  * Pääfunktio työpaikkojen scoutaukseen
  */
 export async function scoutJobs(params: ScoutParams): Promise<ScoutResult[]> {
-  const { profile, sources = ["adzuna"], maxResults = 50 } = params;
+  const { profile, sources = ["serpapi"], maxResults = 50 } = params;
   const results: ScoutResult[] = [];
 
-  // Adzuna API (ensisijainen)
-  // Hyväksytään myös vanhat source-nimet yhteensopivuuden vuoksi
-  if (sources.includes("adzuna") || sources.includes("google") || sources.includes("serper") || 
-      sources.includes("tyomarkkinatori") || sources.includes("duunitori") ||
-      sources.includes("demo")) {
+  // 1. SerpApi Google Jobs (ensisijainen - tukee Suomea!)
+  if (sources.some(s => ["serpapi", "google", "google_jobs", "tyomarkkinatori", "duunitori", "demo"].includes(s))) {
+    try {
+      const jobs = await scoutSerpApiJobs(profile, maxResults);
+      if (jobs.length > 0) {
+        results.push({
+          jobs,
+          source: "google_jobs",
+          count: jobs.length,
+        });
+        console.log(`[Scout] SerpApi Google Jobs found ${jobs.length} jobs`);
+      }
+    } catch (error) {
+      console.error("[Scout] SerpApi error:", error);
+    }
+  }
+
+  // 2. Adzuna (fallback jos SerpApi ei löydä mitään)
+  if (results.length === 0 || sources.includes("adzuna")) {
     try {
       const jobs = await scoutAdzunaJobs(profile, maxResults);
       if (jobs.length > 0) {
@@ -49,10 +65,92 @@ export async function scoutJobs(params: ScoutParams): Promise<ScoutResult[]> {
   }
 
   if (results.length === 0) {
-    console.warn("[Scout] No jobs found - check ADZUNA_APP_ID and ADZUNA_APP_KEY environment variables");
+    console.warn("[Scout] No jobs found - check SERPAPI_API_KEY, ADZUNA_APP_ID and ADZUNA_APP_KEY");
   }
 
   return results;
+}
+
+/**
+ * SerpApi Google Jobs API
+ * https://serpapi.com/google-jobs-api
+ * 
+ * TUKEE SUOMEA! Käyttää oikeaa Google Jobs -dataa.
+ * Tarvitsee SERPAPI_API_KEY ympäristömuuttujan
+ */
+async function scoutSerpApiJobs(profile: Profile, maxResults: number): Promise<InsertJob[]> {
+  const jobs: InsertJob[] = [];
+  
+  const apiKey = process.env.SERPAPI_API_KEY;
+  if (!apiKey) {
+    console.warn("[Scout] SERPAPI_API_KEY not set, skipping SerpApi");
+    return jobs;
+  }
+
+  // Parse profile data
+  let preferredTitles: string[] = [];
+  let preferredLocations: string[] = [];
+  
+  try {
+    if (profile.preferredJobTitles) preferredTitles = JSON.parse(profile.preferredJobTitles);
+    if (profile.preferredLocations) preferredLocations = JSON.parse(profile.preferredLocations);
+  } catch (e) {
+    console.error("[Scout] Profile parse error:", e);
+  }
+
+  const searchTerm = preferredTitles[0] || profile.currentTitle || "software developer";
+  const location = preferredLocations[0] || "Helsinki, Finland";
+
+  console.log(`[Scout] Searching SerpApi Google Jobs for: "${searchTerm}" in "${location}"`);
+
+  try {
+    const params = new URLSearchParams({
+      engine: "google_jobs",
+      q: searchTerm,
+      location: location,
+      hl: "fi",
+      gl: "fi",
+      api_key: apiKey,
+    });
+
+    const response = await fetch(`https://serpapi.com/search.json?${params}`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Scout] SerpApi error: ${response.status} - ${errorText}`);
+      return jobs;
+    }
+
+    const data = await response.json();
+    const listings = data.jobs_results || [];
+
+    console.log(`[Scout] SerpApi returned ${listings.length} jobs`);
+
+    for (const listing of listings.slice(0, maxResults)) {
+      const job: InsertJob = {
+        externalId: listing.job_id ? `serpapi-${listing.job_id}` : `serpapi-${Date.now()}-${Math.random()}`,
+        source: "google_jobs",
+        title: listing.title || "Työpaikka",
+        company: listing.company_name || "Yritys",
+        description: listing.description || "",
+        location: listing.location || location,
+        salaryMin: parseSalary(listing.detected_extensions?.salary)?.min,
+        salaryMax: parseSalary(listing.detected_extensions?.salary)?.max,
+        employmentType: mapSerpApiEmploymentType(listing.detected_extensions),
+        remoteType: listing.detected_extensions?.work_from_home ? "remote" : "on-site",
+        industry: "",
+        postedAt: parsePostedDate(listing.detected_extensions?.posted_at),
+        url: listing.share_link || listing.related_links?.[0]?.link || "",
+      };
+      jobs.push(job);
+    }
+
+    console.log(`[Scout] Processed ${jobs.length} jobs from SerpApi`);
+  } catch (error) {
+    console.error("[Scout] SerpApi fetch error:", error);
+  }
+
+  return jobs;
 }
 
 /**
@@ -191,6 +289,62 @@ function mapContractType(contractType?: string, contractTime?: string): string {
   if (contractType === "contract") return "contract";
   if (contractType === "permanent") return "full-time";
   return "full-time";
+}
+
+function mapSerpApiEmploymentType(extensions?: any): string {
+  if (!extensions) return "full-time";
+  if (extensions.schedule_type) {
+    const type = extensions.schedule_type.toLowerCase();
+    if (type.includes("part")) return "part-time";
+    if (type.includes("contract") || type.includes("temporary")) return "contract";
+    if (type.includes("intern")) return "internship";
+  }
+  return "full-time";
+}
+
+function parseSalary(salaryStr?: string): { min?: number; max?: number } | undefined {
+  if (!salaryStr) return undefined;
+  
+  // Yritetään parsia palkka stringistä, esim. "€50,000 - €70,000 a year"
+  const numbers = salaryStr.match(/[\d,]+/g);
+  if (!numbers || numbers.length === 0) return undefined;
+  
+  const parsed = numbers.map(n => parseInt(n.replace(/,/g, ''), 10));
+  
+  if (parsed.length >= 2) {
+    return { min: Math.min(...parsed), max: Math.max(...parsed) };
+  } else if (parsed.length === 1) {
+    return { min: parsed[0], max: parsed[0] };
+  }
+  
+  return undefined;
+}
+
+function parsePostedDate(postedStr?: string): Date {
+  if (!postedStr) return new Date();
+  
+  const now = new Date();
+  const lower = postedStr.toLowerCase();
+  
+  // "X days ago", "X hours ago", etc.
+  const match = lower.match(/(\d+)\s*(hour|day|week|month)/);
+  if (match) {
+    const num = parseInt(match[1], 10);
+    const unit = match[2];
+    
+    switch (unit) {
+      case 'hour':
+        return new Date(now.getTime() - num * 60 * 60 * 1000);
+      case 'day':
+        return new Date(now.getTime() - num * 24 * 60 * 60 * 1000);
+      case 'week':
+        return new Date(now.getTime() - num * 7 * 24 * 60 * 60 * 1000);
+      case 'month':
+        return new Date(now.getTime() - num * 30 * 24 * 60 * 60 * 1000);
+    }
+  }
+  
+  return new Date();
 }
 
 function hashString(str: string): string {
