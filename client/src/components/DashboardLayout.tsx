@@ -31,7 +31,9 @@ import {
   Briefcase, 
   Bookmark, 
   LogOut, 
-  PanelLeft
+  PanelLeft,
+  Eye,
+  FileText
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -46,6 +48,8 @@ const menuItems = [
   { icon: Search, label: "Työpaikka-Scout", path: "/scout" },
   { icon: Briefcase, label: "Työpaikat", path: "/jobs" },
   { icon: Bookmark, label: "Tallennetut", path: "/saved" },
+  { icon: Eye, label: "Watchlist", path: "/watchlist" },
+  { icon: FileText, label: "PRH-haku", path: "/prh" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

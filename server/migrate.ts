@@ -244,6 +244,49 @@ export async function runMigrations() {
     `);
     console.log("[Migrate] ✓ messages table created");
 
+    // ============== WATCHLIST TABLE ==============
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS watchlist (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        userId INT NOT NULL,
+        companyId INT NOT NULL,
+        notes TEXT,
+        alertsEnabled TINYINT DEFAULT 1,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (companyId) REFERENCES companies(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_user_company (userId, companyId),
+        INDEX idx_userId (userId)
+      )
+    `);
+    console.log("[Migrate] ✓ watchlist table created");
+
+    // ============== PRH COMPANY DATA TABLE ==============
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS prhData (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        companyId INT NOT NULL,
+        yTunnus VARCHAR(20) NOT NULL,
+        businessId VARCHAR(20),
+        companyForm VARCHAR(100),
+        registrationDate DATE,
+        businessLine VARCHAR(500),
+        businessLineCode VARCHAR(10),
+        liquidation TINYINT DEFAULT 0,
+        website VARCHAR(500),
+        latestRevenue BIGINT,
+        latestEmployees INT,
+        latestRevenueYear INT,
+        rawData JSON,
+        fetchedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
+        FOREIGN KEY (companyId) REFERENCES companies(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_company_prh (companyId),
+        INDEX idx_yTunnus (yTunnus)
+      )
+    `);
+    console.log("[Migrate] ✓ prhData table created");
+
     // ============== AUTO SCOUT SETTINGS TABLE ==============
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS autoScoutSettings (

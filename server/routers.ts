@@ -1253,6 +1253,124 @@ export const appRouter = router({
         }
       }),
   }),
+
+  // ============== WATCHLIST ==============
+  watchlist: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const { getWatchlist } = await import("./db");
+      return await getWatchlist(ctx.user.id);
+    }),
+
+    add: protectedProcedure
+      .input(z.object({
+        companyId: z.number(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { addToWatchlist } = await import("./db");
+        return await addToWatchlist(ctx.user.id, input.companyId, input.notes);
+      }),
+
+    remove: protectedProcedure
+      .input(z.object({
+        companyId: z.number(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { removeFromWatchlist } = await import("./db");
+        return await removeFromWatchlist(ctx.user.id, input.companyId);
+      }),
+
+    updateNotes: protectedProcedure
+      .input(z.object({
+        companyId: z.number(),
+        notes: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { updateWatchlistNotes } = await import("./db");
+        return await updateWatchlistNotes(ctx.user.id, input.companyId, input.notes);
+      }),
+
+    toggleAlerts: protectedProcedure
+      .input(z.object({
+        companyId: z.number(),
+        enabled: z.boolean(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { toggleWatchlistAlerts } = await import("./db");
+        return await toggleWatchlistAlerts(ctx.user.id, input.companyId, input.enabled);
+      }),
+
+    isWatched: protectedProcedure
+      .input(z.object({
+        companyId: z.number(),
+      }))
+      .query(async ({ ctx, input }) => {
+        const { isCompanyWatched } = await import("./db");
+        return await isCompanyWatched(ctx.user.id, input.companyId);
+      }),
+  }),
+
+  // ============== PRH (Finnish Business Register) ==============
+  prh: router({
+    searchByYTunnus: protectedProcedure
+      .input(z.object({
+        yTunnus: z.string(),
+      }))
+      .query(async ({ input }) => {
+        const { searchByYTunnus, parsePrhResult } = await import("./prh-api");
+        const result = await searchByYTunnus(input.yTunnus);
+        if (!result) return null;
+        return parsePrhResult(result);
+      }),
+
+    searchByName: protectedProcedure
+      .input(z.object({
+        name: z.string(),
+        maxResults: z.number().optional().default(10),
+      }))
+      .query(async ({ input }) => {
+        const { searchAndEnrichCompanies } = await import("./prh-api");
+        return await searchAndEnrichCompanies(input.name);
+      }),
+
+    enrichCompany: protectedProcedure
+      .input(z.object({
+        yTunnus: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const { enrichCompanyWithPrhData } = await import("./prh-api");
+        return await enrichCompanyWithPrhData(input.yTunnus);
+      }),
+
+    getCompanyData: protectedProcedure
+      .input(z.object({
+        companyId: z.number(),
+      }))
+      .query(async ({ input }) => {
+        const { getCompanyWithPrhData } = await import("./db");
+        return await getCompanyWithPrhData(input.companyId);
+      }),
+
+    checkLiquidation: protectedProcedure
+      .input(z.object({
+        yTunnus: z.string(),
+      }))
+      .query(async ({ input }) => {
+        const { checkCompanyLiquidation } = await import("./prh-api");
+        return await checkCompanyLiquidation(input.yTunnus);
+      }),
+
+    findRecentCompanies: protectedProcedure
+      .input(z.object({
+        searchTerm: z.string(),
+        withinDays: z.number().optional().default(365),
+      }))
+      .query(async ({ input }) => {
+        const { findRecentlyRegisteredCompanies, parsePrhResult } = await import("./prh-api");
+        const results = await findRecentlyRegisteredCompanies(input.searchTerm, input.withinDays);
+        return results.map(r => parsePrhResult(r));
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

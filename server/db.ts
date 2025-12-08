@@ -201,6 +201,60 @@ export async function updateCompanyScore(companyId: number, score: number) {
     .where(eq(companies.id, companyId));
 }
 
+export async function createCompany(company: InsertCompany) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const nameNormalized = normalizeCompanyName(company.name);
+  
+  const result = await db.execute(sql`
+    INSERT INTO companies (name, nameNormalized, domain, yTunnus, industry, mainLocation, linkedinUrl)
+    VALUES (${company.name}, ${nameNormalized}, ${company.domain || null}, ${company.yTunnus || null}, 
+            ${company.industry || null}, ${company.mainLocation || null}, ${company.linkedinUrl || null})
+  `);
+  
+  const insertId = (result[0] as any).insertId;
+  return await getCompanyById(insertId);
+}
+
+export async function updateCompanyById(companyId: number, updates: Partial<InsertCompany>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const setClauses: string[] = [];
+  const values: any[] = [];
+  
+  if (updates.yTunnus !== undefined) {
+    setClauses.push('yTunnus = ?');
+    values.push(updates.yTunnus);
+  }
+  if (updates.domain !== undefined) {
+    setClauses.push('domain = ?');
+    values.push(updates.domain);
+  }
+  if (updates.industry !== undefined) {
+    setClauses.push('industry = ?');
+    values.push(updates.industry);
+  }
+  if (updates.mainLocation !== undefined) {
+    setClauses.push('mainLocation = ?');
+    values.push(updates.mainLocation);
+  }
+  
+  if (setClauses.length === 0) return;
+  
+  // Use raw SQL for update
+  await db.execute(sql`
+    UPDATE companies SET 
+      yTunnus = COALESCE(${updates.yTunnus || null}, yTunnus),
+      domain = COALESCE(${updates.domain || null}, domain),
+      industry = COALESCE(${updates.industry || null}, industry),
+      mainLocation = COALESCE(${updates.mainLocation || null}, mainLocation),
+      updatedAt = NOW()
+    WHERE id = ${companyId}
+  `);
+}
+
 // ============== EVENT QUERIES ==============
 
 export async function createEvent(event: InsertEvent) {
@@ -626,4 +680,153 @@ function calculateNextRunAt(frequency: "daily" | "weekly" | "biweekly"): Date {
     default:
       return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   }
+}
+
+// ============== WATCHLIST QUERIES ==============
+
+export async function getWatchlist(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const result = await db.execute(sql`
+    SELECT w.*, c.name as companyName, c.domain, c.industry, c.yTunnus, c.talentNeedScore,
+           (SELECT COUNT(*) FROM events e WHERE e.companyId = c.id AND e.createdAt > DATE_SUB(NOW(), INTERVAL 30 DAY)) as recentEventsCount
+    FROM watchlist w
+    JOIN companies c ON w.companyId = c.id
+    WHERE w.userId = ${userId}
+    ORDER BY w.createdAt DESC
+  `);
+  return (result[0] as any[]) || [];
+}
+
+export async function addToWatchlist(userId: number, companyId: number, notes?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.execute(sql`
+    INSERT INTO watchlist (userId, companyId, notes)
+    VALUES (${userId}, ${companyId}, ${notes || null})
+    ON DUPLICATE KEY UPDATE notes = ${notes || null}, alertsEnabled = 1
+  `);
+  
+  return { success: true };
+}
+
+export async function removeFromWatchlist(userId: number, companyId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.execute(sql`DELETE FROM watchlist WHERE userId = ${userId} AND companyId = ${companyId}`);
+  return { success: true };
+}
+
+export async function updateWatchlistNotes(userId: number, companyId: number, notes: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.execute(sql`
+    UPDATE watchlist SET notes = ${notes} WHERE userId = ${userId} AND companyId = ${companyId}
+  `);
+  return { success: true };
+}
+
+export async function toggleWatchlistAlerts(userId: number, companyId: number, enabled: boolean) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.execute(sql`
+    UPDATE watchlist SET alertsEnabled = ${enabled ? 1 : 0} WHERE userId = ${userId} AND companyId = ${companyId}
+  `);
+  return { success: true };
+}
+
+export async function isCompanyWatched(userId: number, companyId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  const result = await db.execute(sql`
+    SELECT id FROM watchlist WHERE userId = ${userId} AND companyId = ${companyId} LIMIT 1
+  `);
+  const rows = (result[0] as any[]) || [];
+  return rows.length > 0;
+}
+
+// ============== PRH DATA QUERIES ==============
+
+export interface PrhCompanyData {
+  yTunnus: string;
+  companyName: string;
+  companyForm?: string;
+  registrationDate?: Date;
+  businessLine?: string;
+  businessLineCode?: string;
+  liquidation: boolean;
+  website?: string;
+  latestRevenue?: number;
+  latestEmployees?: number;
+  latestRevenueYear?: number;
+  rawData?: any;
+}
+
+export async function savePrhData(companyId: number, prhData: PrhCompanyData) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rawJson = prhData.rawData ? JSON.stringify(prhData.rawData) : null;
+
+  await db.execute(sql`
+    INSERT INTO prhData (companyId, yTunnus, companyForm, registrationDate, businessLine, businessLineCode, 
+                         liquidation, website, latestRevenue, latestEmployees, latestRevenueYear, rawData)
+    VALUES (${companyId}, ${prhData.yTunnus}, ${prhData.companyForm || null}, ${prhData.registrationDate || null},
+            ${prhData.businessLine || null}, ${prhData.businessLineCode || null}, ${prhData.liquidation ? 1 : 0},
+            ${prhData.website || null}, ${prhData.latestRevenue || null}, ${prhData.latestEmployees || null},
+            ${prhData.latestRevenueYear || null}, ${rawJson})
+    ON DUPLICATE KEY UPDATE
+      companyForm = ${prhData.companyForm || null},
+      registrationDate = ${prhData.registrationDate || null},
+      businessLine = ${prhData.businessLine || null},
+      businessLineCode = ${prhData.businessLineCode || null},
+      liquidation = ${prhData.liquidation ? 1 : 0},
+      website = ${prhData.website || null},
+      latestRevenue = ${prhData.latestRevenue || null},
+      latestEmployees = ${prhData.latestEmployees || null},
+      latestRevenueYear = ${prhData.latestRevenueYear || null},
+      rawData = ${rawJson},
+      fetchedAt = NOW()
+  `);
+}
+
+export async function getPrhData(companyId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const result = await db.execute(sql`SELECT * FROM prhData WHERE companyId = ${companyId} LIMIT 1`);
+  const rows = (result[0] as any[]) || [];
+  return rows.length > 0 ? rows[0] : undefined;
+}
+
+export async function getPrhDataByYTunnus(yTunnus: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const result = await db.execute(sql`SELECT * FROM prhData WHERE yTunnus = ${yTunnus} LIMIT 1`);
+  const rows = (result[0] as any[]) || [];
+  return rows.length > 0 ? rows[0] : undefined;
+}
+
+export async function getCompanyWithPrhData(companyId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const result = await db.execute(sql`
+    SELECT c.*, p.companyForm, p.registrationDate, p.businessLine, p.businessLineCode,
+           p.liquidation, p.website as prhWebsite, p.latestRevenue, p.latestEmployees, 
+           p.latestRevenueYear, p.fetchedAt as prhFetchedAt
+    FROM companies c
+    LEFT JOIN prhData p ON c.id = p.companyId
+    WHERE c.id = ${companyId}
+    LIMIT 1
+  `);
+  const rows = (result[0] as any[]) || [];
+  return rows.length > 0 ? rows[0] : undefined;
 }

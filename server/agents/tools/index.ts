@@ -690,6 +690,561 @@ export const getHiringPredictionTool: AgentTool = {
   },
 };
 
+// ============================================================================
+// VÄINÖ ENHANCED TOOLS - YTJ, Twitter, Glassdoor
+// ============================================================================
+
+// Tool: Get YTJ/PRH Company Data (Finnish Business Register)
+export const getYTJCompanyDataTool: AgentTool = {
+  name: "get_ytj_company_data",
+  description: `Hae virallinen yritysdata Suomen PRH/YTJ-rekisteristä (Patentti- ja rekisterihallitus).
+Palauttaa: Y-tunnus, perustamispäivä, toimiala, kotipaikka, yritysmuoto.
+Toimii vain suomalaisille yrityksille.`,
+  parameters: {
+    type: "object",
+    properties: {
+      companyName: { 
+        type: "string", 
+        description: "Yrityksen nimi (esim. 'Reaktor', 'Supercell')" 
+      },
+      businessId: {
+        type: "string",
+        description: "Y-tunnus jos tiedossa (esim. '0974698-9')"
+      }
+    },
+    required: ["companyName"],
+  },
+  execute: async (args) => {
+    try {
+      const companyName = args.companyName.trim();
+      
+      // PRH Avoindata API endpoint
+      const searchUrl = `https://avoindata.prh.fi/bis/v1?name=${encodeURIComponent(companyName)}&maxResults=5&resultsFrom=0`;
+      
+      const response = await fetch(searchUrl, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'JobScout-Vaino/1.0'
+        }
+      });
+      
+      if (!response.ok) {
+        return { 
+          error: "YTJ-haku epäonnistui",
+          message: "Virallisen yritysrekisterin haku ei onnistunut. Yritä uudelleen."
+        };
+      }
+      
+      const data = await response.json();
+      
+      if (!data.results || data.results.length === 0) {
+        return {
+          error: "Yritystä ei löytynyt",
+          message: `Yritystä "${companyName}" ei löydy Suomen yritysrekisteristä. Tarkista kirjoitusasu tai kokeile Y-tunnusta.`
+        };
+      }
+      
+      // Ota ensimmäinen tulos (paras osuma)
+      const company = data.results[0];
+      
+      // Parsitaan olennaiset tiedot
+      const result: any = {
+        source: "PRH/YTJ Avoindata",
+        businessId: company.businessId || null,
+        name: company.name || companyName,
+        registrationDate: company.registrationDate || null,
+        companyForm: company.companyForm || null,
+        detailsUri: company.detailsUri || null,
+      };
+      
+      // Hae lisätiedot jos detailsUri saatavilla
+      if (company.detailsUri) {
+        try {
+          const detailsResponse = await fetch(company.detailsUri, {
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'JobScout-Vaino/1.0'
+            }
+          });
+          
+          if (detailsResponse.ok) {
+            const details = await detailsResponse.json();
+            
+            // Kotipaikka
+            if (details.addresses) {
+              const registeredAddress = details.addresses.find((a: any) => a.careOf === null);
+              if (registeredAddress) {
+                result.city = registeredAddress.city || null;
+                result.postCode = registeredAddress.postCode || null;
+              }
+            }
+            
+            // Toimialat
+            if (details.businessLines) {
+              result.businessLines = details.businessLines
+                .map((bl: any) => bl.name)
+                .filter(Boolean)
+                .slice(0, 3);
+            }
+            
+            // Yrityksen tila
+            if (details.registeredEntries) {
+              const statusEntry = details.registeredEntries.find((e: any) => 
+                e.description && e.description.includes('toimintaa')
+              );
+              if (statusEntry) {
+                result.status = statusEntry.description;
+              }
+            }
+            
+            // Rekisteröinnit
+            if (details.registeredOffices) {
+              result.registeredOffice = details.registeredOffices[0]?.name || null;
+            }
+          }
+        } catch (detailsError) {
+          console.error("[YTJ] Details fetch failed:", detailsError);
+        }
+      }
+      
+      // Analysoi signaalit
+      const signals: string[] = [];
+      
+      // Perustamisvuosi
+      if (result.registrationDate) {
+        const year = new Date(result.registrationDate).getFullYear();
+        const age = new Date().getFullYear() - year;
+        if (age < 5) {
+          signals.push(`Nuori yritys (perustettu ${year}) - startup-rekrytointi todennäköistä`);
+        } else if (age > 20) {
+          signals.push(`Vakiintunut yritys (perustettu ${year}) - vakaita rekrytointeja`);
+        }
+      }
+      
+      // Yritysmuoto
+      if (result.companyForm) {
+        if (result.companyForm.includes('Osakeyhtiö')) {
+          signals.push('Osakeyhtiö - mahdollisuus rahoituskierroksiin');
+        }
+      }
+      
+      return {
+        success: true,
+        company: result,
+        signals,
+        note: "YTJ-data on virallista ja luotettavaa. Käytä tätä perustana muille analyyseille."
+      };
+      
+    } catch (error) {
+      console.error("[YTJ] API Error:", error);
+      return {
+        error: "YTJ API virhe",
+        message: "Yritysrekisterihaku epäonnistui teknisen virheen takia."
+      };
+    }
+  },
+};
+
+// Tool: Search Twitter Signals
+export const searchTwitterSignalsTool: AgentTool = {
+  name: "search_twitter_signals",
+  description: `Hae Twitter/X-viestejä yrityksestä Googlen kautta (Serper API).
+Tunnistaa: rekrytointi-ilmoituksia, yrityskulttuuripäivityksiä, kasvusignaaleja.
+Sentimenttianalyysi viestien sävystä.`,
+  parameters: {
+    type: "object",
+    properties: {
+      companyName: { 
+        type: "string", 
+        description: "Yrityksen nimi tai Twitter-handle" 
+      },
+      daysBack: {
+        type: "number",
+        description: "Montako päivää taaksepäin haetaan (oletus: 30)"
+      }
+    },
+    required: ["companyName"],
+  },
+  execute: async (args) => {
+    const SERPER_API_KEY = process.env.SERPER_API_KEY;
+    if (!SERPER_API_KEY) {
+      return { error: "SERPER_API_KEY puuttuu ympäristömuuttujista" };
+    }
+    
+    const companyName = args.companyName.trim();
+    const daysBack = args.daysBack || 30;
+    
+    const query = `site:twitter.com OR site:x.com "${companyName}" (rekrytointi OR hiring OR "we're hiring" OR palkkaa OR työpaikka)`;
+    
+    try {
+      const response = await fetch("https://google.serper.dev/search", {
+        method: "POST",
+        headers: {
+          "X-API-KEY": SERPER_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          q: query,
+          gl: "fi",
+          hl: "fi",
+          num: 10,
+          tbs: `qdr:d${daysBack}`
+        }),
+      });
+      
+      if (!response.ok) {
+        return { error: "Twitter-haku epäonnistui" };
+      }
+      
+      const data = await response.json();
+      const results = data.organic || [];
+      
+      const tweets = results.map((item: any) => {
+        const text = `${item.title} ${item.snippet}`.toLowerCase();
+        
+        let sentiment: "positive" | "negative" | "neutral" = "neutral";
+        let signalType = "none";
+        let signalStrength = 0;
+        
+        // Rekrytointisignaalit
+        if (text.includes("we're hiring") || text.includes("join us") || text.includes("looking for") ||
+            text.includes("rekrytointi") || text.includes("avoimia paikkoja") || text.includes("haku käynnissä")) {
+          sentiment = "positive";
+          signalType = "hiring";
+          signalStrength = 3;
+        }
+        
+        // Kasvusignaalit
+        if (text.includes("kasvamme") || text.includes("expanding") || text.includes("new office")) {
+          sentiment = "positive";
+          signalType = "growth";
+          signalStrength = 2;
+        }
+        
+        // Negatiiviset signaalit
+        if (text.includes("layoff") || text.includes("irtisano") || text.includes("yt-neuvottelu")) {
+          sentiment = "negative";
+          signalType = "layoffs";
+          signalStrength = -3;
+        }
+        
+        return {
+          title: item.title,
+          snippet: item.snippet,
+          url: item.link,
+          sentiment,
+          signalType,
+          signalStrength,
+        };
+      });
+      
+      const totalSignalStrength = tweets.reduce((sum: number, t: any) => sum + t.signalStrength, 0);
+      const hiringTweets = tweets.filter((t: any) => t.signalType === "hiring");
+      const growthTweets = tweets.filter((t: any) => t.signalType === "growth");
+      const negativeTweets = tweets.filter((t: any) => t.sentiment === "negative");
+      
+      return {
+        success: true,
+        companyName,
+        period: `Viimeiset ${daysBack} päivää`,
+        totalTweets: tweets.length,
+        analysis: {
+          hiringSignals: hiringTweets.length,
+          growthSignals: growthTweets.length,
+          negativeSignals: negativeTweets.length,
+          overallSignalStrength: totalSignalStrength,
+          sentiment: totalSignalStrength > 2 ? "positive" : totalSignalStrength < -2 ? "negative" : "neutral"
+        },
+        tweets: tweets.slice(0, 5),
+        summary: `Löydettiin ${tweets.length} Twitter-mainintaa. ${hiringTweets.length} rekrytointisignaalia, ${growthTweets.length} kasvusignaalia.`
+      };
+      
+    } catch (error) {
+      console.error("[Twitter] Search error:", error);
+      return {
+        error: "Twitter-haku epäonnistui",
+        message: "Tekninen virhe hakiessa Twitter-viestejä."
+      };
+    }
+  },
+};
+
+// Tool: Search Glassdoor Reviews
+export const searchGlassdoorReviewsTool: AgentTool = {
+  name: "search_glassdoor_reviews",
+  description: `Hae Glassdoor-työntekijäarvosteluja yrityksestä Googlen kautta (Serper API).
+Analysoi: työntekijätyytyväisyyttä, rekrytointitrendi, yrityskulttuurisignaaleja.`,
+  parameters: {
+    type: "object",
+    properties: {
+      companyName: { 
+        type: "string", 
+        description: "Yrityksen nimi" 
+      }
+    },
+    required: ["companyName"],
+  },
+  execute: async (args) => {
+    const SERPER_API_KEY = process.env.SERPER_API_KEY;
+    if (!SERPER_API_KEY) {
+      return { error: "SERPER_API_KEY puuttuu ympäristömuuttujista" };
+    }
+    
+    const companyName = args.companyName.trim();
+    
+    const queries = [
+      `site:glassdoor.com "${companyName}" reviews`,
+      `site:glassdoor.fi "${companyName}" arvostelut`,
+    ];
+    
+    try {
+      const results = await Promise.all(
+        queries.map(async (q) => {
+          const response = await fetch("https://google.serper.dev/search", {
+            method: "POST",
+            headers: {
+              "X-API-KEY": SERPER_API_KEY,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ q, num: 5 }),
+          });
+          
+          if (!response.ok) return [];
+          const data = await response.json();
+          return data.organic || [];
+        })
+      );
+      
+      const allResults = results.flat();
+      
+      if (allResults.length === 0) {
+        return {
+          success: false,
+          message: `Ei löydetty Glassdoor-arvosteluja yrityksestä "${companyName}".`
+        };
+      }
+      
+      const reviews = allResults.map((item: any) => {
+        const text = `${item.title} ${item.snippet}`.toLowerCase();
+        
+        const ratingMatch = text.match(/(\d\.\d)\s*(?:out of|\/)\s*5/);
+        const rating = ratingMatch ? parseFloat(ratingMatch[1]) : null;
+        
+        const positiveKeywords = ["great place", "love working", "amazing culture", "highly recommend", "excellent"];
+        const negativeKeywords = ["toxic", "poor management", "avoid", "layoffs", "overworked"];
+        
+        const hasPositive = positiveKeywords.some(kw => text.includes(kw));
+        const hasNegative = negativeKeywords.some(kw => text.includes(kw));
+        
+        return {
+          title: item.title,
+          snippet: item.snippet,
+          url: item.link,
+          rating,
+          sentiment: hasPositive ? "positive" : hasNegative ? "negative" : "neutral"
+        };
+      });
+      
+      const ratingsFound = reviews.filter((r: any) => r.rating !== null);
+      const avgRating = ratingsFound.length > 0
+        ? (ratingsFound.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / ratingsFound.length).toFixed(1)
+        : null;
+      
+      const positiveCount = reviews.filter((r: any) => r.sentiment === "positive").length;
+      const negativeCount = reviews.filter((r: any) => r.sentiment === "negative").length;
+      
+      return {
+        success: true,
+        companyName,
+        glassdoorData: {
+          reviewsFound: reviews.length,
+          averageRating: avgRating,
+          sentiment: {
+            positive: positiveCount,
+            negative: negativeCount,
+            neutral: reviews.length - positiveCount - negativeCount
+          }
+        },
+        reviews: reviews.slice(0, 3),
+        analysis: avgRating 
+          ? `Keskiarvo ${avgRating}/5.0 - ${parseFloat(avgRating) >= 4.0 ? "Hyvä työnantaja" : parseFloat(avgRating) >= 3.0 ? "Keskiverto työnantaja" : "Heikko työnantaja"}`
+          : "Ei riittävästi dataa arvion antamiseen",
+        signal: avgRating
+          ? parseFloat(avgRating) >= 4.0 ? "Positiivinen signaali - hyvä työpaikka" : parseFloat(avgRating) < 3.0 ? "Negatiivinen signaali - työntekijäongelmat" : "Neutraali signaali"
+          : null
+      };
+      
+    } catch (error) {
+      console.error("[Glassdoor] Search error:", error);
+      return {
+        error: "Glassdoor-haku epäonnistui",
+        message: "Tekninen virhe hakiessa Glassdoor-arvosteluja."
+      };
+    }
+  },
+};
+
+// Tool: Analyze Company Signals V2 (Enhanced - all sources)
+export const analyzeCompanySignalsV2Tool: AgentTool = {
+  name: "analyze_company_signals_v2",
+  description: `PARANNETTU VERSIO - Kerää ja analysoi KAIKKI rekrytointisignaalit yrityksestä.
+Signaalit: YTJ (virallinen data), Uutiset, Twitter, Glassdoor.
+Palauttaa: kokonaispistemäärän (0-100), ennusteen ja toimintaohjeet.
+KÄYTÄ TÄTÄ ensisijaisesti!`,
+  parameters: {
+    type: "object",
+    properties: {
+      companyName: { 
+        type: "string", 
+        description: "Yrityksen nimi (esim. 'Reaktor', 'Futurice')" 
+      },
+    },
+    required: ["companyName"],
+  },
+  execute: async (args, context) => {
+    const companyName = args.companyName;
+    
+    console.log(`[SignalScout V2] Analyzing ${companyName}...`);
+    
+    // Kerää signaalit rinnakkain kaikista lähteistä
+    const [ytjData, newsData, twitterData, glassdoorData] = await Promise.all([
+      getYTJCompanyDataTool.execute({ companyName }, context).catch(e => {
+        console.error("[SignalScout V2] YTJ failed:", e);
+        return null;
+      }),
+      searchNewsSignalsTool.execute({ companyName }, context).catch(e => {
+        console.error("[SignalScout V2] News failed:", e);
+        return null;
+      }),
+      searchTwitterSignalsTool.execute({ companyName, daysBack: 30 }, context).catch(e => {
+        console.error("[SignalScout V2] Twitter failed:", e);
+        return null;
+      }),
+      searchGlassdoorReviewsTool.execute({ companyName }, context).catch(e => {
+        console.error("[SignalScout V2] Glassdoor failed:", e);
+        return null;
+      }),
+    ]);
+    
+    // Laske kokonaispistemäärä
+    let score = 50;
+    const signals: string[] = [];
+    const dataSources: string[] = [];
+    
+    // YTJ-SIGNAALIT
+    if (ytjData && ytjData.success) {
+      dataSources.push("YTJ Virallinen rekisteri");
+      if (ytjData.signals) {
+        signals.push(...ytjData.signals);
+      }
+      if (ytjData.company?.registrationDate) {
+        const age = new Date().getFullYear() - new Date(ytjData.company.registrationDate).getFullYear();
+        if (age < 5) score += 10;
+      }
+    }
+    
+    // UUTIS-SIGNAALIT
+    if (newsData && newsData.newsCount > 0) {
+      dataSources.push("Uutiset & Lehdistötiedotteet");
+      const news = newsData.news || [];
+      for (const article of news) {
+        if (article.sentiment === "positive") {
+          score += 5;
+          if (article.signalType === "funding") {
+            score += 15;
+            signals.push(`💰 Rahoituskierros havaittu - vahva rekrytointisignaali`);
+          } else if (article.signalType === "hiring") {
+            score += 20;
+            signals.push(`📢 Aktiivinen rekrytointi-ilmoitus uutisissa`);
+          } else if (article.signalType === "growth") {
+            score += 10;
+            signals.push(`📈 Kasvusignaali uutisissa`);
+          }
+        } else if (article.sentiment === "negative") {
+          score -= 15;
+          if (article.signalType === "layoffs") {
+            score -= 20;
+            signals.push(`⚠️ YT-neuvottelut tai irtisanomiset - EI rekrytoi`);
+          }
+        }
+      }
+    }
+    
+    // TWITTER-SIGNAALIT
+    if (twitterData && twitterData.success) {
+      dataSources.push("Twitter/X");
+      const analysis = twitterData.analysis || {};
+      if (analysis.hiringSignals > 0) {
+        score += analysis.hiringSignals * 5;
+        signals.push(`🐦 ${analysis.hiringSignals} rekrytointi-twiittiä havaittu`);
+      }
+      if (analysis.growthSignals > 0) {
+        score += analysis.growthSignals * 3;
+      }
+      if (analysis.negativeSignals > 0) {
+        score -= analysis.negativeSignals * 5;
+      }
+    }
+    
+    // GLASSDOOR-SIGNAALIT
+    if (glassdoorData && glassdoorData.success) {
+      dataSources.push("Glassdoor Arvostelut");
+      const rating = glassdoorData.glassdoorData?.averageRating;
+      if (rating) {
+        const ratingNum = parseFloat(rating);
+        if (ratingNum >= 4.0) {
+          score += 10;
+          signals.push(`⭐ Glassdoor ${rating}/5.0 - hyvä työnantaja`);
+        } else if (ratingNum < 3.0) {
+          score -= 10;
+          signals.push(`⚠️ Glassdoor ${rating}/5.0 - työntekijäongelmat`);
+        }
+      }
+    }
+    
+    // Rajoita pistemäärä 0-100
+    score = Math.max(0, Math.min(100, score));
+    
+    // Määritä luotettavuus
+    const confidence = dataSources.length >= 3 ? "high" : dataSources.length >= 2 ? "medium" : "low";
+    
+    // Määritä ajoitus
+    let timing = "90+ päivää";
+    if (score >= 75) timing = "30-60 päivää";
+    else if (score >= 60) timing = "60-90 päivää";
+    
+    // Suositus
+    let recommendation = "";
+    if (score >= 75) {
+      recommendation = "🔥 VAHVAT SIGNAALIT! Ota yhteyttä HR:ään tai verkostoidu LinkedInissä NYT. Yritys todennäköisesti rekrytoi pian.";
+    } else if (score >= 60) {
+      recommendation = "📊 Kohtalaiset signaalit. Seuraa yritystä aktiivisesti ja valmistaudu hakemaan lähiviikkoina.";
+    } else if (score >= 40) {
+      recommendation = "⏳ Heikot signaalit. Pidä yritys watchlistilla mutta etsi vahvempia kohteita.";
+    } else {
+      recommendation = "❌ Ei rekrytointisignaaleja. Yritys ei todennäköisesti rekrytoi lähiaikoina.";
+    }
+    
+    return {
+      company: companyName,
+      timestamp: new Date().toISOString(),
+      score,
+      confidence,
+      timing,
+      dataSources,
+      signals: signals.slice(0, 10),
+      recommendation,
+      rawData: {
+        ytj: ytjData?.success ? ytjData.company : null,
+        newsCount: newsData?.newsCount || 0,
+        twitterCount: twitterData?.totalTweets || 0,
+        glassdoorRating: glassdoorData?.glassdoorData?.averageRating || null,
+      },
+      note: `Analyysi perustuu ${dataSources.length} datalähteeseen. ${confidence === "high" ? "Korkea" : confidence === "medium" ? "Keskitason" : "Matala"} luotettavuus.`
+    };
+  },
+};
+
 // Export all tools
 export const ALL_TOOLS: AgentTool[] = [
   searchJobsTool,
@@ -702,16 +1257,29 @@ export const ALL_TOOLS: AgentTool[] = [
   analyzeCompanySignalsTool,
   searchNewsSignalsTool,
   getHiringPredictionTool,
+  // Väinö Enhanced tools
+  getYTJCompanyDataTool,
+  searchTwitterSignalsTool,
+  searchGlassdoorReviewsTool,
+  analyzeCompanySignalsV2Tool,
 ];
 
 // Tool registry by agent type
 export const AGENT_TOOLS: Record<string, AgentTool[]> = {
   career_coach: [profileGapsTool, searchJobsTool, salaryInsightsTool],
   job_analyzer: [analyzeJobTool, compareJobsTool, searchJobsTool, profileGapsTool],
-  company_intel: [analyzeCompanyTool, searchJobsTool],
+  company_intel: [analyzeCompanyTool, searchJobsTool, getYTJCompanyDataTool],
   interview_prep: [generateQuestionsTool, analyzeJobTool, analyzeCompanyTool],
   negotiator: [salaryInsightsTool, analyzeJobTool, analyzeCompanyTool],
-  signal_scout: [analyzeCompanySignalsTool, searchNewsSignalsTool, getHiringPredictionTool, analyzeCompanyTool],
+  signal_scout: [
+    analyzeCompanySignalsV2Tool,  // UUSI - ensisijainen
+    getYTJCompanyDataTool,
+    searchNewsSignalsTool,
+    searchTwitterSignalsTool,
+    searchGlassdoorReviewsTool,
+    getHiringPredictionTool,
+    analyzeCompanyTool
+  ],
 };
 
 export function getToolsForAgent(agentType: string): AgentTool[] {

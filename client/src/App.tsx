@@ -13,6 +13,8 @@ import CompanyScout from "./pages/CompanyScout";
 import Agents from "./pages/Agents";
 import Login from "./pages/Login";
 import AuthCallback from "./pages/AuthCallback";
+import Watchlist from "./pages/Watchlist";
+import PrhSearch from "./pages/PrhSearch";
 
 function Router() {
   return (
@@ -25,7 +27,10 @@ function Router() {
       <Route path={"/jobs"} component={Jobs} />
       <Route path={"/scout"} component={Scout} />
       <Route path={"/companies"} component={CompanyScout} />
+      <Route path={"/company-scout"} component={CompanyScout} />
       <Route path={"/saved"} component={SavedJobs} />
+      <Route path={"/watchlist"} component={Watchlist} />
+      <Route path={"/prh"} component={PrhSearch} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
