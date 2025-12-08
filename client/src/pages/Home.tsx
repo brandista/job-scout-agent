@@ -1,400 +1,580 @@
-import { useAuth } from "@/_core/hooks/useAuth";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import DashboardLayout from "@/components/DashboardLayout";
-import { trpc } from "@/lib/trpc";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { 
-  Briefcase, TrendingUp, Target, Zap, ArrowRight, User, 
-  CheckCircle2, Circle, Sparkles, Building2, Clock, ChevronRight,
-  Search, Bot, Eye, FileText
+  Sparkles, 
+  TrendingUp, 
+  Briefcase, 
+  Target, 
+  Eye,
+  Bot,
+  Building2,
+  Search,
+  ArrowRight,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  Zap,
+  Star,
+  MessageSquare,
+  FileText,
+  BarChart3,
+  TrendingDown,
+  Plus
 } from "lucide-react";
-import { Link } from "wouter";
-import { formatDistanceToNow } from "date-fns";
-import { fi } from "date-fns/locale";
+import { useLocation } from "wouter";
+import { cn } from "@/lib/utils";
 
-// Onboarding steps
-const ONBOARDING_STEPS = [
-  { id: "profile", label: "Luo profiili", href: "/profile", icon: User },
-  { id: "preferences", label: "Aseta preferenssit", href: "/profile", icon: Target },
-  { id: "firstSearch", label: "Aja ensimmäinen haku", href: "/scout", icon: Search },
-  { id: "exploreAgents", label: "Tutustu AI-agentteihin", href: "/agents", icon: Bot },
-];
+// Mock data - korvaa oikealla API-datalla integraatiossa
+const useDashboardData = () => {
+  // TODO: Korvaa nämä oikeilla API-kutsuilla
+  return {
+    stats: {
+      savedJobs: 12,
+      activeMatches: 8,
+      watchlistCompanies: 5,
+      profileCompletion: 85,
+    },
+    recentActivity: [
+      {
+        id: "1",
+        type: "match",
+        title: "Uusi työmatch: Senior Developer",
+        company: "Reaktor",
+        timestamp: "2 tuntia sitten",
+        score: 92,
+        icon: Target,
+        color: "text-green-500"
+      },
+      {
+        id: "2",
+        type: "signal",
+        title: "Väinö: Rekrytointisignaali havaittu",
+        company: "Supercell",
+        timestamp: "5 tuntia sitten",
+        score: 78,
+        icon: Zap,
+        color: "text-yellow-500"
+      },
+      {
+        id: "3",
+        type: "conversation",
+        title: "Keskustelu: Kaisa (Career Coach)",
+        company: null,
+        timestamp: "Eilen",
+        icon: MessageSquare,
+        color: "text-blue-500"
+      },
+    ],
+    topMatches: [
+      {
+        id: "1",
+        title: "Senior Full Stack Developer",
+        company: "Reaktor",
+        location: "Helsinki",
+        score: 92,
+        salary: "5000-7000€",
+        posted: "2 päivää sitten",
+      },
+      {
+        id: "2",
+        title: "Lead Frontend Engineer",
+        company: "Wolt",
+        location: "Helsinki",
+        score: 88,
+        salary: "5500-7500€",
+        posted: "4 päivää sitten",
+      },
+      {
+        id: "3",
+        title: "Backend Developer",
+        company: "Supercell",
+        location: "Helsinki",
+        score: 85,
+        salary: "4500-6500€",
+        posted: "1 viikko sitten",
+      },
+    ],
+    aiRecommendations: [
+      {
+        agent: "Väinö",
+        avatar: "V",
+        message: "3 uutta rekrytointisignaalia watchlistillasi",
+        action: "Tarkastele signaaleja",
+        path: "/watchlist",
+        urgent: true,
+      },
+      {
+        agent: "Kaisa",
+        avatar: "K",
+        message: "Täydennä profiilisi saadaksesi parempia matcheja",
+        action: "Paranna profiilia",
+        path: "/profile",
+        urgent: false,
+      },
+      {
+        agent: "Sofia",
+        avatar: "S",
+        message: "Reaktor on mahdollisesti rekrytoimassa pian",
+        action: "Analysoi yritys",
+        path: "/companies",
+        urgent: false,
+      },
+    ],
+    watchlistSignals: [
+      { company: "Reaktor", signals: 4, trend: "up" as const },
+      { company: "Wolt", signals: 2, trend: "stable" as const },
+      { company: "Supercell", signals: 3, trend: "up" as const },
+    ],
+  };
+};
 
-function OnboardingProgress({ profile }: { profile: any }) {
-  // Calculate completion
-  const steps = [
-    { done: !!profile?.currentTitle, id: "profile" },
-    { done: !!profile?.preferredJobTitles?.length, id: "preferences" },
-    { done: false, id: "firstSearch" }, // TODO: check from scout history
-    { done: false, id: "exploreAgents" },
-  ];
-  
-  const completedCount = steps.filter(s => s.done).length;
-  const progress = (completedCount / steps.length) * 100;
-  
-  if (progress === 100) return null; // Hide when complete
-  
+export default function DashboardHome() {
+  const [, setLocation] = useLocation();
+  const data = useDashboardData();
+
   return (
-    <Card className="border-2 border-dashed border-blue-200 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30">
-      <CardContent className="pt-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="font-semibold text-lg">Aloita tästä 👋</h3>
-            <p className="text-sm text-muted-foreground">
-              Täydennä profiilisi parempiin matcheihin
+    <div className="space-y-6 md:space-y-8">
+      {/* Hero Section with Welcome Message */}
+      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 p-6 md:p-8 text-white shadow-2xl">
+        <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10" />
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="space-y-2">
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">
+              <Sparkles className="h-6 w-6 md:h-8 md:w-8" />
+              Tervetuloa takaisin!
+            </h1>
+            <p className="text-sm md:text-base text-white/90 max-w-xl">
+              Sinulla on <strong>{data.stats.activeMatches} aktiivista työmatcheja</strong> ja <strong>{data.stats.watchlistCompanies} yritystä</strong> watchlistillasi.
+              Väinö on havainnut uusia rekrytointisignaaleja! 🎯
             </p>
           </div>
-          <div className="text-right">
-            <span className="text-2xl font-bold text-blue-600">{Math.round(progress)}%</span>
-            <p className="text-xs text-muted-foreground">valmis</p>
-          </div>
+          <Button 
+            size="lg" 
+            variant="secondary"
+            className="shadow-xl hover:shadow-2xl transition-all whitespace-nowrap"
+            onClick={() => setLocation('/scout')}
+          >
+            <Search className="mr-2 h-4 w-4" />
+            Aloita Scout
+          </Button>
         </div>
-        
-        <Progress value={progress} className="h-2 mb-4" />
-        
-        <div className="space-y-2">
-          {ONBOARDING_STEPS.map((step, index) => {
-            const stepState = steps[index];
-            const Icon = step.icon;
-            
-            return (
-              <Link key={step.id} href={step.href}>
-                <div className={`flex items-center gap-3 p-3 rounded-lg transition-colors cursor-pointer ${
-                  stepState.done 
-                    ? 'bg-green-50 dark:bg-green-950/20' 
-                    : 'bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700'
-                }`}>
-                  {stepState.done ? (
-                    <CheckCircle2 className="w-5 h-5 text-green-600" />
-                  ) : (
-                    <Circle className="w-5 h-5 text-gray-300" />
+      </section>
+
+      {/* Stats Cards Grid */}
+      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        <StatsCard
+          title="Tallennetut työpaikat"
+          value={data.stats.savedJobs}
+          icon={Briefcase}
+          gradient="from-blue-500 to-cyan-500"
+          trend="+2 tällä viikolla"
+          onClick={() => setLocation('/saved')}
+        />
+        <StatsCard
+          title="Aktiiviset matchit"
+          value={data.stats.activeMatches}
+          icon={Target}
+          gradient="from-green-500 to-emerald-500"
+          trend="+3 uutta"
+          onClick={() => setLocation('/jobs')}
+        />
+        <StatsCard
+          title="Watchlist"
+          value={data.stats.watchlistCompanies}
+          icon={Eye}
+          gradient="from-purple-500 to-pink-500"
+          trend="4 signaalia"
+          onClick={() => setLocation('/watchlist')}
+        />
+        <StatsCard
+          title="Profiilin valmius"
+          value={`${data.stats.profileCompletion}%`}
+          icon={Star}
+          gradient="from-orange-500 to-red-500"
+          trend="Melkein valmis!"
+          onClick={() => setLocation('/profile')}
+        />
+      </section>
+
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Recent Activity + Top Matches (2 columns) */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Profile Completion Banner */}
+          {data.stats.profileCompletion < 100 && (
+            <Card className="border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50">
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <AlertCircle className="h-5 w-5 text-orange-500" />
+                      Täydennä profiilisi
+                    </CardTitle>
+                    <CardDescription>
+                      Saat parempia työmatcheja täydellisellä profiililla
+                    </CardDescription>
+                  </div>
+                  <Badge variant="secondary">{data.stats.profileCompletion}%</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Progress value={data.stats.profileCompletion} className="h-2" />
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button 
+                    size="sm" 
+                    variant="default"
+                    onClick={() => setLocation('/profile')}
+                    className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    Täydennä profiili
+                  </Button>
+                  <Button size="sm" variant="outline">
+                    Muistuta myöhemmin
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Recent Activity Feed */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-blue-500" />
+                  Viimeisimmät tapahtumat
+                </CardTitle>
+                <Button variant="ghost" size="sm">
+                  Näytä kaikki
+                </Button>
+              </div>
+              <CardDescription>
+                Mitä on tapahtunut viime aikoina
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {data.recentActivity.map((activity) => (
+                <div
+                  key={activity.id}
+                  className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group"
+                  onClick={() => {
+                    // TODO: Navigate to relevant page based on activity type
+                  }}
+                >
+                  <div className={cn(
+                    "h-10 w-10 rounded-lg flex items-center justify-center shrink-0",
+                    "bg-gradient-to-br from-muted to-muted/50 group-hover:scale-110 transition-transform"
+                  )}>
+                    <activity.icon className={cn("h-5 w-5", activity.color)} />
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p className="text-sm font-medium leading-none">{activity.title}</p>
+                    {activity.company && (
+                      <p className="text-sm text-muted-foreground">{activity.company}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">{activity.timestamp}</p>
+                  </div>
+                  {activity.score && (
+                    <Badge variant="secondary" className="shrink-0">
+                      {activity.score}%
+                    </Badge>
                   )}
-                  <Icon className="w-4 h-4 text-muted-foreground" />
-                  <span className={stepState.done ? 'line-through text-muted-foreground' : 'font-medium'}>
-                    {step.label}
-                  </span>
-                  {!stepState.done && (
-                    <ChevronRight className="w-4 h-4 ml-auto text-muted-foreground" />
-                  )}
                 </div>
-              </Link>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function QuickActions() {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <Link href="/scout">
-        <Card className="group hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer h-full">
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-xl group-hover:scale-110 transition-transform">
-                <Search className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-lg mb-1">Etsi työpaikkoja</h3>
-                <p className="text-sm text-muted-foreground">
-                  Scout etsii sinulle sopivia paikkoja automaattisesti
-                </p>
-              </div>
-              <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:translate-x-1 transition-transform" />
-            </div>
-          </CardContent>
-        </Card>
-      </Link>
-
-      <Link href="/agents">
-        <Card className="group hover:border-purple-500 hover:shadow-lg transition-all cursor-pointer h-full bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950/30 dark:to-blue-950/30">
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-purple-100 dark:bg-purple-900 rounded-xl group-hover:scale-110 transition-transform">
-                <Sparkles className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-lg mb-1">Kysy Väinöltä</h3>
-                <p className="text-sm text-muted-foreground">
-                  AI ennustaa rekrytointeja ennen kuin paikat julkaistaan
-                </p>
-              </div>
-              <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:translate-x-1 transition-transform" />
-            </div>
-          </CardContent>
-        </Card>
-      </Link>
-    </div>
-  );
-}
-
-function SignalHighlights() {
-  const { data: topCompanies, isLoading } = trpc.signalFeed.topCompanies.useQuery({ limit: 3 });
-  
-  if (isLoading || !topCompanies?.length) return null;
-  
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Zap className="w-5 h-5 text-yellow-500" />
-            Kuumat signaalit
-          </CardTitle>
-          <Link href="/companies">
-            <Button variant="ghost" size="sm">
-              Näytä kaikki
-              <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
-          </Link>
-        </div>
-        <CardDescription>
-          Yritykset joissa vahvimmat rekrytointisignaalit
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {topCompanies.map((company: any, index: number) => (
-            <div 
-              key={company.id}
-              className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white ${
-                  index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : 'bg-orange-400'
-                }`}>
-                  {index + 1}
-                </div>
-                <div>
-                  <div className="font-medium">{company.name}</div>
-                  {company.industry && (
-                    <div className="text-xs text-muted-foreground">{company.industry}</div>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className={`px-3 py-1 rounded-full text-sm font-bold ${
-                  company.talentNeedScore >= 7 
-                    ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' 
-                    : company.talentNeedScore >= 4 
-                      ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
-                      : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                }`}>
-                  {company.talentNeedScore?.toFixed(0) || '—'}%
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ToolsGrid() {
-  const tools = [
-    { 
-      href: "/watchlist", 
-      icon: Eye, 
-      label: "Watchlist", 
-      desc: "Seuraa yrityksiä",
-      color: "text-blue-600",
-      bg: "bg-blue-100 dark:bg-blue-900"
-    },
-    { 
-      href: "/prh", 
-      icon: FileText, 
-      label: "YTJ-haku", 
-      desc: "Yritystiedot",
-      color: "text-green-600",
-      bg: "bg-green-100 dark:bg-green-900"
-    },
-    { 
-      href: "/jobs", 
-      icon: Briefcase, 
-      label: "Matchit", 
-      desc: "Sopivat paikat",
-      color: "text-purple-600",
-      bg: "bg-purple-100 dark:bg-purple-900"
-    },
-    { 
-      href: "/companies", 
-      icon: Building2, 
-      label: "Yritykset", 
-      desc: "Tutustu yrityksiin",
-      color: "text-orange-600",
-      bg: "bg-orange-100 dark:bg-orange-900"
-    },
-  ];
-  
-  return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      {tools.map(tool => (
-        <Link key={tool.href} href={tool.href}>
-          <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full">
-            <CardContent className="pt-4 pb-4 text-center">
-              <div className={`w-10 h-10 rounded-lg ${tool.bg} flex items-center justify-center mx-auto mb-2`}>
-                <tool.icon className={`w-5 h-5 ${tool.color}`} />
-              </div>
-              <div className="font-medium text-sm">{tool.label}</div>
-              <div className="text-xs text-muted-foreground">{tool.desc}</div>
+              ))}
             </CardContent>
           </Card>
-        </Link>
-      ))}
-    </div>
-  );
-}
 
-// Landing page for non-authenticated users
-function LandingPage() {
-  return (
-    <div className="min-h-screen">
-      {/* Hero */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-        <div className="container max-w-4xl py-20 md:py-32 text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 dark:bg-blue-900 rounded-full text-sm font-medium text-blue-900 dark:text-blue-100 mb-6">
-            <Sparkles className="w-4 h-4" />
-            AI-pohjainen työnhaku
-          </div>
-          
-          <h1 className="text-4xl md:text-6xl font-bold leading-tight mb-6">
-            Löydä työpaikat 
-            <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"> ennen muita</span>
-          </h1>
-          
-          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-            JobScout ennustaa rekrytoinnit AI:n avulla. Saat 2-4 viikon etumatkan 
-            kun tiedät mitkä yritykset rekrytoivat seuraavaksi.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/login">
-              <Button size="lg" className="text-lg px-8">
-                Aloita ilmaiseksi
-                <ArrowRight className="w-5 h-5 ml-2" />
-              </Button>
-            </Link>
-          </div>
-          
-          {/* Social proof */}
-          <div className="mt-12 flex items-center justify-center gap-8 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-green-600" />
-              <span>500+ signaaliviestiä/kk</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-blue-600" />
-              <span>100+ yritystä seurannassa</span>
-            </div>
-          </div>
+          {/* Top Matches */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5 text-green-500" />
+                  Parhaat matchit sinulle
+                </CardTitle>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => setLocation('/jobs')}
+                >
+                  Näytä kaikki
+                </Button>
+              </div>
+              <CardDescription>
+                Nämä työpaikat sopivat profiiliisi parhaiten
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {data.topMatches.map((job) => (
+                <div
+                  key={job.id}
+                  className="p-4 rounded-lg border hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group"
+                  onClick={() => setLocation(`/jobs/${job.id}`)}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-2 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold text-sm group-hover:text-primary transition-colors">
+                          {job.title}
+                        </h3>
+                        <Badge 
+                          variant="secondary" 
+                          className="bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 border-green-200"
+                        >
+                          {job.score}% match
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground flex items-center gap-1">
+                        <Building2 className="h-3 w-3" />
+                        {job.company} • {job.location}
+                      </p>
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Briefcase className="h-3 w-3" />
+                          {job.salary}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {job.posted}
+                        </span>
+                      </div>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      variant="ghost"
+                      className="shrink-0"
+                    >
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         </div>
-      </section>
 
-      {/* How it works */}
-      <section className="py-20 bg-white dark:bg-gray-950">
-        <div className="container max-w-4xl">
-          <h2 className="text-3xl font-bold text-center mb-12">Miten se toimii?</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <User className="w-8 h-8 text-blue-600" />
+        {/* Right Sidebar (1 column) */}
+        <div className="space-y-6">
+          {/* AI Recommendations */}
+          <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-violet-50">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Bot className="h-5 w-5 text-purple-500" />
+                AI-suositukset
+              </CardTitle>
+              <CardDescription>
+                Agentit ovat huomanneet jotain sinulle
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {data.aiRecommendations.map((rec, idx) => (
+                <div
+                  key={idx}
+                  className={cn(
+                    "p-3 rounded-lg border-2 cursor-pointer transition-all hover:shadow-md",
+                    rec.urgent 
+                      ? "border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50" 
+                      : "border-border bg-background hover:border-primary/50"
+                  )}
+                  onClick={() => setLocation(rec.path)}
+                >
+                  <div className="flex items-start gap-3">
+                    <Avatar className="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600 border-2 border-white shadow-md">
+                      <AvatarFallback className="text-white font-bold">
+                        {rec.avatar}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        {rec.agent}
+                      </p>
+                      <p className="text-sm leading-tight">{rec.message}</p>
+                      <Button 
+                        size="sm" 
+                        variant={rec.urgent ? "default" : "outline"}
+                        className={cn(
+                          "w-full",
+                          rec.urgent && "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                        )}
+                      >
+                        {rec.action}
+                        <ArrowRight className="ml-2 h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Watchlist Quick View */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Eye className="h-5 w-5 text-cyan-500" />
+                  Watchlist-signaalit
+                </CardTitle>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => setLocation('/watchlist')}
+                >
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
               </div>
-              <h3 className="font-semibold text-lg mb-2">1. Luo profiili</h3>
-              <p className="text-muted-foreground">
-                Kerro taidoistasi ja mitä etsit
-              </p>
-            </div>
-            
-            <div className="text-center">
-              <div className="w-16 h-16 bg-purple-100 dark:bg-purple-900 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <Zap className="w-8 h-8 text-purple-600" />
-              </div>
-              <h3 className="font-semibold text-lg mb-2">2. Väinö analysoi</h3>
-              <p className="text-muted-foreground">
-                AI seuraa signaaleja ja ennustaa rekrytointeja
-              </p>
-            </div>
-            
-            <div className="text-center">
-              <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <Target className="w-8 h-8 text-green-600" />
-              </div>
-              <h3 className="font-semibold text-lg mb-2">3. Hae ajoissa</h3>
-              <p className="text-muted-foreground">
-                Ota yhteyttä ennen kuin paikka julkaistaan
-              </p>
-            </div>
-          </div>
-          
-          <div className="text-center mt-12">
-            <Link href="/login">
-              <Button size="lg">
-                Kokeile ilmaiseksi
-                <ArrowRight className="w-5 h-5 ml-2" />
+              <CardDescription>
+                Seuraamasi yritykset
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {data.watchlistSignals.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between p-3 rounded-lg border hover:border-primary/50 transition-colors cursor-pointer"
+                  onClick={() => setLocation(`/companies?q=${item.company}`)}
+                >
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">{item.company}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {item.signals} signaalia havaittu
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {item.trend === "up" ? (
+                      <TrendingUp className="h-4 w-4 text-green-500" />
+                    ) : (
+                      <TrendingDown className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <Badge variant="outline">{item.signals}</Badge>
+                  </div>
+                </div>
+              ))}
+              <Button 
+                variant="outline" 
+                className="w-full"
+                onClick={() => setLocation('/watchlist')}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Lisää yritys watchlistille
               </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
+            </CardContent>
+          </Card>
 
-// Dashboard for authenticated users
-function Dashboard({ user }: { user: any }) {
-  const { data: profile, isLoading } = trpc.profile.get.useQuery();
-  
-  const firstName = user?.name?.split(' ')[0] || 'käyttäjä';
-  const timeOfDay = new Date().getHours();
-  const greeting = timeOfDay < 12 ? 'Huomenta' : timeOfDay < 18 ? 'Päivää' : 'Iltaa';
-  
-  return (
-    <div className="container max-w-4xl py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl md:text-3xl font-bold mb-2">
-          {greeting}, {firstName}! 👋
-        </h1>
-        <p className="text-muted-foreground">
-          Mitä haluaisit tehdä tänään?
-        </p>
+          {/* Quick Actions */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Pika-toiminnot</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-2">
+              <QuickActionButton
+                icon={Bot}
+                label="AI-agentit"
+                gradient="from-purple-500 to-violet-500"
+                onClick={() => setLocation('/agents')}
+              />
+              <QuickActionButton
+                icon={Building2}
+                label="Yritykset"
+                gradient="from-orange-500 to-red-500"
+                onClick={() => setLocation('/companies')}
+              />
+              <QuickActionButton
+                icon={Search}
+                label="Scout"
+                gradient="from-green-500 to-emerald-500"
+                onClick={() => setLocation('/scout')}
+              />
+              <QuickActionButton
+                icon={BarChart3}
+                label="Tilastot"
+                gradient="from-blue-500 to-cyan-500"
+                onClick={() => setLocation('/stats')}
+              />
+            </CardContent>
+          </Card>
+        </div>
       </div>
+    </div>
+  );
+}
+
+// Stats Card Component
+interface StatsCardProps {
+  title: string;
+  value: number | string;
+  icon: React.ElementType;
+  gradient: string;
+  trend?: string;
+  onClick?: () => void;
+}
+
+function StatsCard({ title, value, icon: Icon, gradient, trend, onClick }: StatsCardProps) {
+  return (
+    <Card 
+      className="hover:shadow-lg transition-all cursor-pointer group overflow-hidden relative"
+      onClick={onClick}
+    >
+      {/* Gradient background (subtle) */}
+      <div className={cn(
+        "absolute inset-0 opacity-0 group-hover:opacity-5 transition-opacity bg-gradient-to-br",
+        gradient
+      )} />
       
-      <div className="space-y-6">
-        {/* Onboarding (shows if not complete) */}
-        {!isLoading && <OnboardingProgress profile={profile} />}
-        
-        {/* Main actions */}
-        <QuickActions />
-        
-        {/* Signal highlights */}
-        <SignalHighlights />
-        
-        {/* Tools grid */}
-        <div>
-          <h2 className="text-lg font-semibold mb-3">Työkalut</h2>
-          <ToolsGrid />
+      <CardContent className="p-6 relative z-10">
+        <div className="flex items-start justify-between">
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground font-medium">{title}</p>
+            <p className="text-3xl font-bold tracking-tight">{value}</p>
+            {trend && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3 text-green-500" />
+                {trend}
+              </p>
+            )}
+          </div>
+          <div className={cn(
+            "h-12 w-12 rounded-xl flex items-center justify-center bg-gradient-to-br group-hover:scale-110 transition-transform shadow-md",
+            gradient
+          )}>
+            <Icon className="h-6 w-6 text-white" />
+          </div>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
-export default function Home() {
-  const { user, isAuthenticated } = useAuth();
+// Quick Action Button Component
+interface QuickActionButtonProps {
+  icon: React.ElementType;
+  label: string;
+  gradient: string;
+  onClick?: () => void;
+}
 
+function QuickActionButton({ icon: Icon, label, gradient, onClick }: QuickActionButtonProps) {
   return (
-    <DashboardLayout allowGuest>
-      {isAuthenticated ? (
-        <Dashboard user={user} />
-      ) : (
-        <LandingPage />
-      )}
-    </DashboardLayout>
+    <Button
+      variant="outline"
+      className="h-auto flex flex-col items-center gap-2 p-4 hover:shadow-md transition-all group relative overflow-hidden"
+      onClick={onClick}
+    >
+      <div className={cn(
+        "absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity bg-gradient-to-br",
+        gradient
+      )} />
+      <div className={cn(
+        "h-10 w-10 rounded-lg flex items-center justify-center bg-gradient-to-br group-hover:scale-110 transition-transform relative z-10",
+        gradient
+      )}>
+        <Icon className="h-5 w-5 text-white" />
+      </div>
+      <span className="text-xs font-medium relative z-10">{label}</span>
+    </Button>
   );
 }

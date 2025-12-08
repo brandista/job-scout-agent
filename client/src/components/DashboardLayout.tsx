@@ -20,7 +20,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-// getLoginUrl removed - using /login route instead
+import { Badge } from "@/components/ui/badge";
 import { useIsMobile } from "@/hooks/useMobile";
 import { 
   Home, 
@@ -33,23 +33,92 @@ import {
   LogOut, 
   PanelLeft,
   Eye,
-  FileText
+  FileText,
+  Bell,
+  Sparkles,
+  TrendingUp,
+  Settings
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
+import { cn } from "@/lib/utils";
+
+// Simuloitu notifikaatiolaskuri - korvataan oikealla datalla integraatiossa
+const useNotificationCount = () => {
+  // TODO: Korvaa tämä oikealla API-kutsulla joka hakee:
+  // - Uudet watchlist-hälytykset
+  // - Uudet työmatchit
+  // - Väinön signaalit
+  // - Unread agent messages
+  return 3; // Placeholder
+};
 
 const menuItems = [
-  { icon: Home, label: "Etusivu", path: "/" },
-  { icon: User, label: "Profiili", path: "/profile" },
-  { icon: Bot, label: "AI-agentit", path: "/agents" },
-  { icon: Building2, label: "Yritys-Skanneri", path: "/companies" },
-  { icon: Search, label: "Työpaikka-Scout", path: "/scout" },
-  { icon: Briefcase, label: "Työpaikat", path: "/jobs" },
-  { icon: Bookmark, label: "Tallennetut", path: "/saved" },
-  { icon: Eye, label: "Watchlist", path: "/watchlist" },
-  { icon: FileText, label: "PRH-haku", path: "/prh" },
+  { 
+    icon: Home, 
+    label: "Etusivu", 
+    path: "/", 
+    badge: null,
+    gradient: "from-blue-500 to-cyan-500"
+  },
+  { 
+    icon: User, 
+    label: "Profiili", 
+    path: "/profile",
+    badge: null,
+    gradient: "from-purple-500 to-pink-500"
+  },
+  { 
+    icon: Bot, 
+    label: "AI-agentit", 
+    path: "/agents",
+    badge: "6",
+    gradient: "from-violet-500 to-purple-500"
+  },
+  { 
+    icon: Building2, 
+    label: "Yritys-Skanneri", 
+    path: "/companies",
+    badge: null,
+    gradient: "from-orange-500 to-red-500"
+  },
+  { 
+    icon: Search, 
+    label: "Työpaikka-Scout", 
+    path: "/scout",
+    badge: null,
+    gradient: "from-green-500 to-emerald-500"
+  },
+  { 
+    icon: Briefcase, 
+    label: "Työpaikat", 
+    path: "/jobs",
+    badge: null,
+    gradient: "from-blue-500 to-indigo-500"
+  },
+  { 
+    icon: Bookmark, 
+    label: "Tallennetut", 
+    path: "/saved",
+    badge: null,
+    gradient: "from-yellow-500 to-orange-500"
+  },
+  { 
+    icon: Eye, 
+    label: "Watchlist", 
+    path: "/watchlist",
+    badge: null, // TODO: Badge jos uusia signaaleja
+    gradient: "from-cyan-500 to-blue-500"
+  },
+  { 
+    icon: FileText, 
+    label: "PRH-haku", 
+    path: "/prh",
+    badge: null,
+    gradient: "from-slate-500 to-gray-500"
+  },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -80,14 +149,19 @@ export default function DashboardLayout({
 
   if (!user && !allowGuest) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
           <div className="flex flex-col items-center gap-6">
-            <h1 className="text-2xl font-semibold tracking-tight text-center">
-              Kirjaudu sisään jatkaaksesi
+            {/* Logo placeholder - voit korvata omalla logolla */}
+            <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-2xl">
+              <Sparkles className="h-10 w-10 text-white" />
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight text-center bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              Tervetuloa JobScoutiin
             </h1>
-            <p className="text-sm text-muted-foreground text-center max-w-sm">
-              JobScout auttaa sinua löytämään unelmatyösi älykkään matchauksen avulla.
+            <p className="text-sm text-muted-foreground text-center max-w-sm leading-relaxed">
+              JobScout auttaa sinua löytämään unelmatyösi älykkään matchauksen ja 6 AI-agentin avulla. 
+              Aloita matkasi nyt! 🚀
             </p>
           </div>
           <Button
@@ -95,8 +169,9 @@ export default function DashboardLayout({
               window.location.href = '/login';
             }}
             size="lg"
-            className="w-full shadow-lg hover:shadow-xl transition-all"
+            className="w-full shadow-lg hover:shadow-xl transition-all bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
           >
+            <Sparkles className="mr-2 h-4 w-4" />
             Kirjaudu sisään
           </Button>
         </div>
@@ -136,6 +211,7 @@ function DashboardLayoutContent({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const activeMenuItem = menuItems.find(item => item.path === location);
   const isMobile = useIsMobile();
+  const notificationCount = useNotificationCount();
 
   useEffect(() => {
     if (isCollapsed) {
@@ -178,10 +254,10 @@ function DashboardLayoutContent({
       <div className="relative" ref={sidebarRef}>
         <Sidebar
           collapsible="icon"
-          className="border-r-0"
+          className="border-r-0 bg-gradient-to-b from-background to-muted/20"
           disableTransition={isResizing}
         >
-          <SidebarHeader className="h-16 justify-center">
+          <SidebarHeader className="h-16 justify-center border-b">
             <div className="flex items-center gap-3 px-2 transition-all w-full">
               <button
                 onClick={toggleSidebar}
@@ -192,6 +268,9 @@ function DashboardLayoutContent({
               </button>
               {!isCollapsed ? (
                 <div className="flex items-center gap-2 min-w-0">
+                  <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shrink-0">
+                    <Sparkles className="h-4 w-4 text-white" />
+                  </div>
                   <span className="font-bold tracking-tight truncate text-lg bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                     JobScout
                   </span>
@@ -201,7 +280,7 @@ function DashboardLayoutContent({
           </SidebarHeader>
 
           <SidebarContent className="gap-0">
-            <SidebarMenu className="px-2 py-1">
+            <SidebarMenu className="px-2 py-2">
               {menuItems.map(item => {
                 const isActive = location === item.path;
                 return (
@@ -210,29 +289,81 @@ function DashboardLayoutContent({
                       isActive={isActive}
                       onClick={() => setLocation(item.path)}
                       tooltip={item.label}
-                      className={`h-10 transition-all font-normal`}
+                      className={cn(
+                        "h-11 transition-all font-normal group relative overflow-hidden",
+                        isActive && "bg-gradient-to-r " + item.gradient + " text-white hover:opacity-90"
+                      )}
                     >
+                      {/* Gradient glow effect on hover (non-active) */}
+                      {!isActive && (
+                        <div className={cn(
+                          "absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity bg-gradient-to-r",
+                          item.gradient
+                        )} />
+                      )}
+                      
                       <item.icon
-                        className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
+                        className={cn(
+                          "h-4 w-4 relative z-10 transition-transform group-hover:scale-110",
+                          isActive ? "text-white" : ""
+                        )}
                       />
-                      <span>{item.label}</span>
+                      <span className="relative z-10">{item.label}</span>
+                      
+                      {/* Badge for items with counts */}
+                      {item.badge && !isCollapsed && (
+                        <Badge 
+                          variant="secondary" 
+                          className="ml-auto h-5 px-1.5 text-xs relative z-10"
+                        >
+                          {item.badge}
+                        </Badge>
+                      )}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
               })}
             </SidebarMenu>
+
+            {/* Divider */}
+            <div className="my-2 px-4">
+              <div className="h-px bg-gradient-to-r from-transparent via-border to-transparent" />
+            </div>
+
+            {/* Quick Settings Section */}
+            {!isCollapsed && (
+              <div className="px-4 py-2">
+                <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+                  Asetukset
+                </p>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      onClick={() => setLocation('/settings')}
+                      className="h-10"
+                    >
+                      <Settings className="h-4 w-4" />
+                      <span>Asetukset</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </div>
+            )}
           </SidebarContent>
 
-          <SidebarFooter className="p-3">
+          <SidebarFooter className="p-3 border-t">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <Avatar className="h-9 w-9 border shrink-0">
-                    <AvatarFallback className="text-xs font-medium">
+                <button className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-accent/50 transition-all w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring relative">
+                  {/* Gradient border effect */}
+                  <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 opacity-0 group-hover:opacity-20 transition-opacity" />
+                  
+                  <Avatar className="h-9 w-9 border-2 border-gradient-to-r from-blue-500 to-purple-600 shrink-0 relative z-10">
+                    <AvatarFallback className="text-xs font-medium bg-gradient-to-br from-blue-500 to-purple-600 text-white">
                       {user?.name?.charAt(0).toUpperCase() || 'U'}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+                  <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden relative z-10">
                     <p className="text-sm font-medium truncate leading-none">
                       {user?.name || "-"}
                     </p>
@@ -242,13 +373,20 @@ function DashboardLayoutContent({
                   </div>
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuItem
                   onClick={() => setLocation('/profile')}
                   className="cursor-pointer"
                 >
                   <User className="mr-2 h-4 w-4" />
                   <span>Profiili</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setLocation('/settings')}
+                  className="cursor-pointer"
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Asetukset</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -262,8 +400,13 @@ function DashboardLayoutContent({
             </DropdownMenu>
           </SidebarFooter>
         </Sidebar>
+        
+        {/* Resize handle */}
         <div
-          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
+          className={cn(
+            "absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-gradient-to-b from-blue-500 to-purple-600 transition-colors",
+            isCollapsed && "hidden"
+          )}
           onMouseDown={() => {
             if (isCollapsed) return;
             setIsResizing(true);
@@ -272,23 +415,73 @@ function DashboardLayoutContent({
         />
       </div>
 
-      <SidebarInset>
-        {isMobile && (
-          <div className="flex border-b h-14 items-center justify-between bg-background/95 px-2 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
-            <div className="flex items-center gap-2">
+      <SidebarInset className="bg-gradient-to-br from-background via-muted/5 to-background">
+        {/* Top Bar for Mobile + Notifications */}
+        <div className={cn(
+          "flex border-b h-14 items-center justify-between bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40",
+          !isMobile && "border-none h-16"
+        )}>
+          <div className="flex items-center gap-3">
+            {isMobile && (
               <SidebarTrigger className="h-9 w-9 rounded-lg bg-background" />
-              <div className="flex items-center gap-3">
-                <div className="flex flex-col gap-1">
-                  <span className="tracking-tight text-foreground">
-                    {activeMenuItem?.label ?? "JobScout"}
-                  </span>
-                </div>
-              </div>
+            )}
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-semibold tracking-tight text-foreground flex items-center gap-2">
+                {activeMenuItem?.label ?? "JobScout"}
+                {location === "/" && (
+                  <Badge variant="secondary" className="text-xs">
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                    Aktiivinen
+                  </Badge>
+                )}
+              </span>
+              {!isMobile && activeMenuItem && (
+                <span className="text-xs text-muted-foreground">
+                  {getPageDescription(activeMenuItem.path)}
+                </span>
+              )}
             </div>
           </div>
-        )}
-        <main className="flex-1 p-4">{children}</main>
+
+          {/* Notification Bell */}
+          <Button 
+            variant="ghost" 
+            size="icon"
+            className="relative"
+            onClick={() => setLocation('/notifications')} // TODO: Create notifications page
+          >
+            <Bell className="h-5 w-5" />
+            {notificationCount > 0 && (
+              <Badge 
+                variant="destructive" 
+                className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs"
+              >
+                {notificationCount}
+              </Badge>
+            )}
+          </Button>
+        </div>
+
+        <main className="flex-1 p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full">
+          {children}
+        </main>
       </SidebarInset>
     </>
   );
+}
+
+// Helper function for page descriptions
+function getPageDescription(path: string): string {
+  const descriptions: Record<string, string> = {
+    "/": "Tervetuloa takaisin! Tässä on tämänhetkinen tilanteesi.",
+    "/profile": "Hallitse profiiliasi ja CV:täsi",
+    "/agents": "Keskustele 6 AI-agentin kanssa",
+    "/companies": "Skannaa yrityksiä ja analysoi signaaleja",
+    "/scout": "Etsi ja löydä parhaat työpaikat",
+    "/jobs": "Selaa kaikkia työpaikkoja",
+    "/saved": "Tallentamasi työpaikat",
+    "/watchlist": "Seuraamasi yritykset ja signaalit",
+    "/prh": "Hae yritystietoja PRH:sta",
+  };
+  return descriptions[path] || "";
 }
