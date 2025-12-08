@@ -165,7 +165,6 @@ export async function searchByCompanyName(name: string, maxResults: number = 10)
       console.error(`[PRH] API error: ${response.status} ${response.statusText}`);
       return []; // Return empty array instead of throwing
     }
-    }
 
     const data = await response.json() as PrhSearchResponse;
     console.log(`[PRH] Found ${data.totalResults} companies matching "${name}"`);
