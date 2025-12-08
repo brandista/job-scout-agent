@@ -2,6 +2,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import DashboardLayout from "@/components/DashboardLayout";
+import SignalFeed from "@/components/SignalFeed";
 import { Briefcase, TrendingUp, Target, Zap, ArrowRight, User, Bookmark, Bot } from "lucide-react";
 import { Link } from "wouter";
 
@@ -11,106 +12,163 @@ export default function Home() {
   return (
     <DashboardLayout allowGuest>
     <div className="min-h-screen">
-      {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-        <div className="container max-w-6xl py-20 md:py-32">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div className="space-y-6">
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 dark:bg-blue-900 rounded-full text-sm font-medium text-blue-900 dark:text-blue-100">
-                <Zap className="w-4 h-4" />
-                Älykkäät Työpaikka-Haut
-              </div>
-              
-              <h1 className="text-4xl md:text-6xl font-bold leading-tight bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Löydä Unelmatyösi Automaattisesti
-              </h1>
-              
-              <p className="text-lg md:text-xl text-muted-foreground">
-                Job Scout Agent etsii sinulle sopivia työpaikkoja älykkään matchaus-algoritmin avulla. 
-                Säästä aikaa ja löydä parhaat mahdollisuudet vaivattomasti.
-              </p>
+      {/* Hero Section - Compact for logged in users */}
+      {!isAuthenticated ? (
+        <section className="relative overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+          <div className="container max-w-6xl py-20 md:py-32">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+              <div className="space-y-6">
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 dark:bg-blue-900 rounded-full text-sm font-medium text-blue-900 dark:text-blue-100">
+                  <Zap className="w-4 h-4" />
+                  Älykkäät Työpaikka-Haut
+                </div>
+                
+                <h1 className="text-4xl md:text-6xl font-bold leading-tight bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                  Löydä Unelmatyösi Automaattisesti
+                </h1>
+                
+                <p className="text-lg md:text-xl text-muted-foreground">
+                  Job Scout Agent etsii sinulle sopivia työpaikkoja älykkään matchaus-algoritmin avulla. 
+                  Säästä aikaa ja löydä parhaat mahdollisuudet vaivattomasti.
+                </p>
 
-              <div className="flex flex-col sm:flex-row gap-4">
-                {isAuthenticated ? (
-                  <>
-                    <Link href="/scout">
-                      <Button size="lg" className="w-full sm:w-auto">
-                        <TrendingUp className="w-5 h-5 mr-2" />
-                        Aloita Scoutaus
-                      </Button>
-                    </Link>
-                    <Link href="/jobs">
-                      <Button size="lg" variant="outline" className="w-full sm:w-auto">
-                        Katso Matchit
-                        <ArrowRight className="w-5 h-5 ml-2" />
-                      </Button>
-                    </Link>
-                  </>
-                ) : (
-                  <>
-                    <Link href="/login">
-                      <Button size="lg" className="w-full sm:w-auto">
-                        Kirjaudu Sisään
-                        <ArrowRight className="w-5 h-5 ml-2" />
-                      </Button>
-                    </Link>
-                    <Button size="lg" variant="outline" className="w-full sm:w-auto">
-                      Lue Lisää
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <Link href="/login">
+                    <Button size="lg" className="w-full sm:w-auto">
+                      Kirjaudu Sisään
+                      <ArrowRight className="w-5 h-5 ml-2" />
                     </Button>
-                  </>
-                )}
+                  </Link>
+                  <Button size="lg" variant="outline" className="w-full sm:w-auto">
+                    Lue Lisää
+                  </Button>
+                </div>
               </div>
-            </div>
 
-            <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-purple-400 rounded-3xl blur-3xl opacity-20"></div>
-              <Card className="relative border-2">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Target className="w-6 h-6 text-primary" />
-                    Matchaus-Esimerkki
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium">Taidot</span>
-                      <span className="text-sm font-bold text-green-600">95%</span>
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-purple-400 rounded-3xl blur-3xl opacity-20"></div>
+                <Card className="relative border-2">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Target className="w-6 h-6 text-primary" />
+                      Matchaus-Esimerkki
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium">Taidot</span>
+                        <span className="text-sm font-bold text-green-600">95%</span>
+                      </div>
+                      <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-green-500 rounded-full" style={{ width: "95%" }}></div>
+                      </div>
                     </div>
-                    <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                      <div className="h-full bg-green-500 rounded-full" style={{ width: "95%" }}></div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium">Kokemus</span>
+                        <span className="text-sm font-bold text-blue-600">88%</span>
+                      </div>
+                      <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-blue-500 rounded-full" style={{ width: "88%" }}></div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium">Kokemus</span>
-                      <span className="text-sm font-bold text-blue-600">88%</span>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium">Sijainti</span>
+                        <span className="text-sm font-bold text-purple-600">92%</span>
+                      </div>
+                      <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-purple-500 rounded-full" style={{ width: "92%" }}></div>
+                      </div>
                     </div>
-                    <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-500 rounded-full" style={{ width: "88%" }}></div>
+                    <div className="pt-4 border-t">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold">Kokonaismatch</span>
+                        <span className="text-2xl font-bold text-primary">91%</span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium">Sijainti</span>
-                      <span className="text-sm font-bold text-purple-600">92%</span>
-                    </div>
-                    <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                      <div className="h-full bg-purple-500 rounded-full" style={{ width: "92%" }}></div>
-                    </div>
-                  </div>
-                  <div className="pt-4 border-t">
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold">Kokonaismatch</span>
-                      <span className="text-2xl font-bold text-primary">91%</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : (
+        /* Dashboard for logged in users */
+        <section className="py-6">
+          <div className="container max-w-6xl">
+            {/* Welcome Header */}
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold">
+                Tervetuloa takaisin{user?.name ? `, ${user.name.split(' ')[0]}` : ''}! 👋
+              </h1>
+              <p className="text-muted-foreground">
+                Tässä viimeisimmät rekrytointisignaalit ja päivitykset.
+              </p>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <Link href="/scout">
+                <Card className="hover:border-primary transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                      <TrendingUp className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <div className="font-medium">Scout</div>
+                      <div className="text-xs text-muted-foreground">Etsi töitä</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href="/agents">
+                <Card className="hover:border-primary transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <div className="p-2 bg-purple-100 rounded-lg">
+                      <Bot className="w-5 h-5 text-purple-600" />
+                    </div>
+                    <div>
+                      <div className="font-medium">Väinö</div>
+                      <div className="text-xs text-muted-foreground">AI-agentti</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href="/watchlist">
+                <Card className="hover:border-primary transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <div className="p-2 bg-yellow-100 rounded-lg">
+                      <Bookmark className="w-5 h-5 text-yellow-600" />
+                    </div>
+                    <div>
+                      <div className="font-medium">Watchlist</div>
+                      <div className="text-xs text-muted-foreground">Seurattavat</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href="/prh">
+                <Card className="hover:border-primary transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <div className="p-2 bg-green-100 rounded-lg">
+                      <Briefcase className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div>
+                      <div className="font-medium">PRH</div>
+                      <div className="text-xs text-muted-foreground">Yritystiedot</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            </div>
+
+            {/* Signal Feed */}
+            <SignalFeed />
+          </div>
+        </section>
+      )}
 
       {/* Features Section */}
       <section className="py-20 bg-white dark:bg-gray-950">

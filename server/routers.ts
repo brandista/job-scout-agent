@@ -1371,6 +1371,180 @@ export const appRouter = router({
         return results.map(r => parsePrhResult(r));
       }),
   }),
+
+  // ============== SIGNAL FEED ==============
+  signalFeed: router({
+    // Get recent signals/events
+    recent: publicProcedure
+      .input(z.object({
+        limit: z.number().optional().default(20),
+      }))
+      .query(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { sql } = await import("drizzle-orm");
+        
+        const db = await getDb();
+        if (!db) return [];
+        
+        const result = await db.execute(sql`
+          SELECT e.*, c.name as companyName, c.industry, c.yTunnus, c.talentNeedScore
+          FROM events e
+          JOIN companies c ON e.companyId = c.id
+          ORDER BY e.createdAt DESC
+          LIMIT ${input.limit}
+        `);
+        
+        return (result[0] as any[]) || [];
+      }),
+
+    // Get top companies by signal strength
+    topCompanies: publicProcedure
+      .input(z.object({
+        limit: z.number().optional().default(10),
+      }))
+      .query(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { sql } = await import("drizzle-orm");
+        
+        const db = await getDb();
+        if (!db) return [];
+        
+        const result = await db.execute(sql`
+          SELECT c.*, 
+                 COUNT(e.id) as eventCount,
+                 MAX(e.createdAt) as lastEventAt
+          FROM companies c
+          LEFT JOIN events e ON c.id = e.companyId AND e.createdAt > DATE_SUB(NOW(), INTERVAL 30 DAY)
+          GROUP BY c.id
+          HAVING eventCount > 0 OR c.talentNeedScore > 0
+          ORDER BY c.talentNeedScore DESC, eventCount DESC
+          LIMIT ${input.limit}
+        `);
+        
+        return (result[0] as any[]) || [];
+      }),
+
+    // Get signal stats/summary
+    stats: publicProcedure.query(async () => {
+      const { getDb } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      
+      const db = await getDb();
+      if (!db) return null;
+      
+      const [eventsResult, companiesResult, recentResult] = await Promise.all([
+        db.execute(sql`SELECT COUNT(*) as total FROM events WHERE createdAt > DATE_SUB(NOW(), INTERVAL 7 DAY)`),
+        db.execute(sql`SELECT COUNT(*) as total FROM companies WHERE talentNeedScore > 0`),
+        db.execute(sql`SELECT COUNT(*) as total FROM events WHERE createdAt > DATE_SUB(NOW(), INTERVAL 24 HOUR)`),
+      ]);
+      
+      return {
+        eventsLast7Days: (eventsResult[0] as any[])[0]?.total || 0,
+        activeCompanies: (companiesResult[0] as any[])[0]?.total || 0,
+        eventsLast24Hours: (recentResult[0] as any[])[0]?.total || 0,
+      };
+    }),
+
+    // Get signals by event type
+    byType: publicProcedure
+      .input(z.object({
+        eventType: z.string(),
+        limit: z.number().optional().default(10),
+      }))
+      .query(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { sql } = await import("drizzle-orm");
+        
+        const db = await getDb();
+        if (!db) return [];
+        
+        const result = await db.execute(sql`
+          SELECT e.*, c.name as companyName, c.industry
+          FROM events e
+          JOIN companies c ON e.companyId = c.id
+          WHERE e.eventType = ${input.eventType}
+          ORDER BY e.createdAt DESC
+          LIMIT ${input.limit}
+        `);
+        
+        return (result[0] as any[]) || [];
+      }),
+  }),
+
+  // ============== EMAIL DIGEST ==============
+  emailDigest: router({
+    // Send test digest email
+    sendTest: protectedProcedure.mutation(async ({ ctx }) => {
+      const { getProfileByUserId, getWatchlist } = await import("./db");
+      const { sendDigestEmail } = await import("./email-digest");
+      
+      const profile = await getProfileByUserId(ctx.user.id);
+      const watchlist = await getWatchlist(ctx.user.id);
+      
+      if (!ctx.user.email) {
+        throw new Error("No email address found");
+      }
+      
+      await sendDigestEmail({
+        to: ctx.user.email,
+        userName: ctx.user.name || "Käyttäjä",
+        watchlist,
+        profile,
+      });
+      
+      return { success: true };
+    }),
+
+    // Get digest preview (what would be sent)
+    preview: protectedProcedure.query(async ({ ctx }) => {
+      const { getProfileByUserId, getWatchlist } = await import("./db");
+      const { getDb } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      
+      const db = await getDb();
+      if (!db) return null;
+      
+      const [profile, watchlist] = await Promise.all([
+        getProfileByUserId(ctx.user.id),
+        getWatchlist(ctx.user.id),
+      ]);
+      
+      // Get top signals for user
+      const topSignals = await db.execute(sql`
+        SELECT e.*, c.name as companyName, c.talentNeedScore
+        FROM events e
+        JOIN companies c ON e.companyId = c.id
+        WHERE e.createdAt > DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ORDER BY c.talentNeedScore DESC, e.impactStrength DESC
+        LIMIT 5
+      `);
+      
+      // Get watchlist updates
+      const watchlistIds = watchlist.map((w: any) => w.companyId);
+      let watchlistUpdates: any[] = [];
+      
+      if (watchlistIds.length > 0) {
+        const watchlistResult = await db.execute(sql`
+          SELECT e.*, c.name as companyName
+          FROM events e
+          JOIN companies c ON e.companyId = c.id
+          WHERE e.companyId IN (${sql.raw(watchlistIds.join(',') || '0')})
+          AND e.createdAt > DATE_SUB(NOW(), INTERVAL 7 DAY)
+          ORDER BY e.createdAt DESC
+          LIMIT 10
+        `);
+        watchlistUpdates = (watchlistResult[0] as any[]) || [];
+      }
+      
+      return {
+        userName: ctx.user.name || "Käyttäjä",
+        topSignals: (topSignals[0] as any[]) || [],
+        watchlistUpdates,
+        watchlistCount: watchlist.length,
+        profileComplete: !!profile?.skills,
+      };
+    }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

@@ -1245,6 +1245,180 @@ KÄYTÄ TÄTÄ ensisijaisesti!`,
   },
 };
 
+// ============================================================================
+// AGENT COLLABORATION TOOLS - Agenttien yhteistyö
+// ============================================================================
+
+// Tool: Request help from Career Coach
+export const requestCareerCoachTool: AgentTool = {
+  name: "request_career_coach",
+  description: `Pyydä apua Career Coach -agentilta. Käytä kun:
+- Käyttäjä tarvitsee uraohjausta tai neuvoja
+- Haluat analysoida käyttäjän profiilin sopivuutta
+- Käyttäjä kysyy CV:stä tai profiilista
+Palauttaa Career Coachin analyysin ja suositukset.`,
+  parameters: {
+    type: "object",
+    properties: {
+      question: { 
+        type: "string", 
+        description: "Kysymys tai pyyntö Career Coachille" 
+      },
+      context: {
+        type: "string",
+        description: "Lisäkonteksti (esim. yritys jota analysoidaan)"
+      }
+    },
+    required: ["question"],
+  },
+  execute: async (args, context) => {
+    // Simuloidaan Career Coachin vastaus (tulevaisuudessa oikea agenttikutsu)
+    const profile = context?.profile;
+    
+    return {
+      agent: "Career Coach",
+      response: `Career Coach analysoi tilanteen:
+      
+Käyttäjän profiili: ${profile?.currentTitle || 'Ei määritelty'}
+Kokemus: ${profile?.yearsExperience || 'Ei tiedossa'} vuotta
+
+Kysymys: "${args.question}"
+
+Suositus: Perustuen profiiliisi, suosittelen keskittymään vahvuuksiisi ja verkostoitumiseen. 
+${args.context ? `Konteksti "${args.context}" huomioiden, tämä voisi olla hyvä tilaisuus sinulle.` : ''}`,
+      actionItems: [
+        "Päivitä LinkedIn-profiilisi",
+        "Valmistele hissipuhe",
+        "Verkostoidu alan ammattilaisiin"
+      ]
+    };
+  },
+};
+
+// Tool: Request help from Negotiator
+export const requestNegotiatorTool: AgentTool = {
+  name: "request_negotiator",
+  description: `Pyydä apua Negotiator-agentilta. Käytä kun:
+- Käyttäjä kysyy palkasta tai neuvottelusta
+- Vahva rekrytointisignaali → neuvottelu voi olla aggressiivisempi
+- Käyttäjä haluaa tietää markkinapalkat
+Palauttaa neuvottelustrategian ja palkka-arvion.`,
+  parameters: {
+    type: "object",
+    properties: {
+      companyName: { 
+        type: "string", 
+        description: "Yrityksen nimi" 
+      },
+      roleType: {
+        type: "string",
+        description: "Rooli (esim. 'senior developer', 'marketing manager')"
+      },
+      signalStrength: {
+        type: "number",
+        description: "Rekrytointisignaalin vahvuus 0-100"
+      }
+    },
+    required: ["companyName"],
+  },
+  execute: async (args, context) => {
+    const signalStrength = args.signalStrength || 50;
+    const profile = context?.profile;
+    
+    // Neuvottelustrategia perustuen signaalin vahvuuteen
+    let strategy = "";
+    let salaryAdvice = "";
+    
+    if (signalStrength >= 75) {
+      strategy = "VAHVA NEUVOTTELUASEMA! Yritys todennäköisesti rekrytoi aktiivisesti - voit neuvotella aggressiivisemmin.";
+      salaryAdvice = "Pyydä 10-20% markkinahintaa korkeampaa palkkaa.";
+    } else if (signalStrength >= 50) {
+      strategy = "Kohtuullinen neuvotteluasema. Yritys harkitsee rekrytointia - pysy kohtuullisena mutta älä alihinnoittele.";
+      salaryAdvice = "Pyydä markkinahintaa vastaavaa palkkaa.";
+    } else {
+      strategy = "Varovainen lähestymistapa. Signaalit ovat heikot - keskity osoittamaan arvosi ennen palkkaneuvottelua.";
+      salaryAdvice = "Hyväksy aluksi markkinahinta ja neuvottele myöhemmin.";
+    }
+    
+    return {
+      agent: "Negotiator",
+      company: args.companyName,
+      role: args.roleType || "Yleinen",
+      signalStrength,
+      strategy,
+      salaryAdvice,
+      tips: [
+        "Tutki yrityksen taloustilanne ennen neuvottelua",
+        "Valmistele konkreettisia esimerkkejä saavutuksistasi",
+        "Älä paljasta nykyistä palkkaasi ensimmäisenä",
+        signalStrength >= 75 ? "Mainitse muut tarjoukset (jos on)" : "Osoita kiinnostuksesi yritykseen"
+      ]
+    };
+  },
+};
+
+// Tool: Request Interview Prep
+export const requestInterviewPrepTool: AgentTool = {
+  name: "request_interview_prep",
+  description: `Pyydä apua Interview Prep -agentilta. Käytä kun:
+- Käyttäjä haluaa valmistautua haastatteluun
+- Vahva signaali → haastattelukutsu todennäköinen pian
+- Käyttäjä kysyy haastattelukysymyksistä
+Palauttaa haastatteluvalmistelusuunnitelman.`,
+  parameters: {
+    type: "object",
+    properties: {
+      companyName: { 
+        type: "string", 
+        description: "Yrityksen nimi" 
+      },
+      roleType: {
+        type: "string",
+        description: "Rooli johon haetaan"
+      },
+      urgency: {
+        type: "string",
+        enum: ["low", "medium", "high"],
+        description: "Kiireellisyys (perustuen signaalin vahvuuteen)"
+      }
+    },
+    required: ["companyName"],
+  },
+  execute: async (args, context) => {
+    const urgency = args.urgency || "medium";
+    
+    return {
+      agent: "Interview Prep",
+      company: args.companyName,
+      role: args.roleType || "Yleinen",
+      urgency,
+      prepPlan: {
+        timeline: urgency === "high" ? "1-2 viikkoa" : urgency === "medium" ? "2-4 viikkoa" : "1-2 kuukautta",
+        focusAreas: [
+          "Tutustu yrityksen historiaan ja arvoihin",
+          "Valmistele STAR-tarinat kokemuksistasi",
+          "Tutki yrityksen tuotteet/palvelut",
+          "Harjoittele yleisiä haastattelukysymyksiä"
+        ],
+        companySpecific: [
+          `Tutki ${args.companyName}:n viimeisimmät uutiset`,
+          `Selvitä ${args.companyName}:n kilpailijat`,
+          `Ymmärrä ${args.companyName}:n liiketoimintamalli`
+        ],
+        questions: [
+          "Kerro itsestäsi ja miksi haet tätä roolia?",
+          `Miksi haluat työskennellä ${args.companyName}:ssa?`,
+          "Kerro tilanteesta jossa ratkaisit vaikean ongelman?",
+          "Missä näet itsesi 5 vuoden päästä?"
+        ]
+      },
+      tip: urgency === "high" 
+        ? "🔥 Aloita valmistautuminen NYT - haastattelukutsu voi tulla pian!" 
+        : "Hyvä ajankohta aloittaa perusteellinen valmistautuminen."
+    };
+  },
+};
+
 // Export all tools
 export const ALL_TOOLS: AgentTool[] = [
   searchJobsTool,
@@ -1262,6 +1436,10 @@ export const ALL_TOOLS: AgentTool[] = [
   searchTwitterSignalsTool,
   searchGlassdoorReviewsTool,
   analyzeCompanySignalsV2Tool,
+  // Agent collaboration tools
+  requestCareerCoachTool,
+  requestNegotiatorTool,
+  requestInterviewPrepTool,
 ];
 
 // Tool registry by agent type
@@ -1272,13 +1450,17 @@ export const AGENT_TOOLS: Record<string, AgentTool[]> = {
   interview_prep: [generateQuestionsTool, analyzeJobTool, analyzeCompanyTool],
   negotiator: [salaryInsightsTool, analyzeJobTool, analyzeCompanyTool],
   signal_scout: [
-    analyzeCompanySignalsV2Tool,  // UUSI - ensisijainen
+    analyzeCompanySignalsV2Tool,
     getYTJCompanyDataTool,
     searchNewsSignalsTool,
     searchTwitterSignalsTool,
     searchGlassdoorReviewsTool,
     getHiringPredictionTool,
-    analyzeCompanyTool
+    analyzeCompanyTool,
+    // Agent collaboration - Väinö can call other agents
+    requestCareerCoachTool,
+    requestNegotiatorTool,
+    requestInterviewPrepTool,
   ],
 };
 
